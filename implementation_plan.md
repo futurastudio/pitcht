@@ -41,10 +41,16 @@ We will initialize a new Electron + Next.js project using a standard boilerplate
 
 #### [NEW] `src/renderer/pages/analysis.tsx`
 - Post-interview dashboard.
-- Displays recorded video.
-- Shows analysis metrics (Emotion graphs, transcript, AI advice).
+- **[UPDATE]** Persistent "Liquid Glass" background (VideoFeed).
+- **[UPDATE]** Interactive Video Player (using Blob URL or File Path).
+- **[UPDATE]** Detailed Metrics: Face Expressions, Intonation, Body Language, Anxiety/Stress.
+- **[UPDATE]** AI Advice section.
 
 ### Logic & Services
+
+#### [NEW] `src/renderer/context/InterviewContext.tsx`
+- Manages global state: `recordedVideoBlob`, `analysisData`.
+- Allows sharing video between Interview and Analysis pages.
 
 #### [NEW] `src/renderer/lib/audio.ts`
 - Handles `SpeechRecognition` (Web Speech API) for real-time answer listening to trigger next questions.

@@ -14,16 +14,3 @@ body {
   overflow: hidden;
   /* Prevent scrolling in app-like interface */
 }
-
-/* Liquid Glass Utilities */
-.glass-panel {
-  @apply bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl;
-}
-
-.glass-button {
-  @apply bg-white/20 hover:bg-white/30 active:bg-white/40 backdrop-blur-lg border border-white/30 transition-all duration-200;
-}
-
-.glass-text {
-  @apply text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70;
-}

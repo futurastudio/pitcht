@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs/promises';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,11 +17,6 @@ const createWindow = () => {
             nodeIntegration: false,
             contextIsolation: true,
         },
-        // Liquid Glass aesthetic: transparent window (optional, but good for overlays)
-        // For now, standard window with custom CSS inside is safer for cross-platform.
-        // frame: false, // Uncomment for custom frame
-        // transparent: true, // Uncomment for transparency
-        // vibrancy: 'fullscreen-ui', // macOS only
     });
 
     const isDev = process.env.NODE_ENV === 'development';
@@ -56,8 +52,22 @@ app.on('window-all-closed', () => {
 });
 
 // IPC Handlers
-ipcMain.handle('save-video', async (event, buffer) => {
-    // TODO: Implement video saving logic
-    console.log('Video save requested');
-    return { success: true };
+ipcMain.handle('save-video', async (event, arrayBuffer) => {
+    try {
+        const buffer = Buffer.from(arrayBuffer);
+        const { filePath } = await dialog.showSaveDialog({
+            title: 'Save Interview Recording',
+            defaultPath: `interview-${Date.now()}.webm`,
+            filters: [{ name: 'WebM Video', extensions: ['webm'] }],
+        });
+
+        if (filePath) {
+            await fs.writeFile(filePath, buffer);
+            return { success: true, filePath };
+        }
+        return { success: false, error: 'Cancelled' };
+    } catch (error) {
+        console.error('Failed to save video:', error);
+        return { success: false, error: String(error) };
+    }
 });

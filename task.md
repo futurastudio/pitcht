@@ -8,11 +8,21 @@
     - [x] Initialize Electron + Next.js project <!-- id: 3 -->
     - [x] Configure Tailwind CSS for glassmorphism <!-- id: 4 -->
 - [/] Core Features - MVP
-    - [/] Implement Video Camera Feed <!-- id: 5 -->
+    - [x] Implement Video Camera Feed <!-- id: 5 -->
     - [ ] Implement Speech-to-Text (STT) <!-- id: 6 -->
     - [ ] Implement AI Question Generation (LLM Integration) <!-- id: 7 -->
-    - [ ] Build "Liquid Glass" UI Components (Prompter, Controls) <!-- id: 8 -->
+    - [x] Build "Liquid Glass" UI Components (Prompter, Controls) <!-- id: 8 -->
+    - [ ] Implement Video Recording & Saving (Electron IPC) <!-- id: 12 -->
+- [/] Core Features - MVP
+    - [x] Implement Video Camera Feed <!-- id: 5 -->
+    - [ ] Implement Speech-to-Text (STT) <!-- id: 6 -->
+    - [ ] Implement AI Question Generation (LLM Integration) <!-- id: 7 -->
+    - [x] Build "Liquid Glass" UI Components (Prompter, Controls) <!-- id: 8 -->
+    - [x] Implement Video Recording & Saving (Electron IPC) <!-- id: 12 -->
+    - [x] Add Question Counter & Session State <!-- id: 13 -->
 - [ ] Post-Interview Analysis
-    - [ ] Implement Video Recording <!-- id: 9 -->
+    - [ ] Refactor VideoFeed to Layout (Persistent Background) <!-- id: 15 -->
+    - [ ] Create InterviewContext for State Management <!-- id: 16 -->
+    - [ ] Update Analysis Page with Video Player & Detailed Metrics <!-- id: 14 -->
     - [ ] Integrate Emotion/Expression Analysis API <!-- id: 10 -->
     - [ ] Generate Feedback Report <!-- id: 11 -->
