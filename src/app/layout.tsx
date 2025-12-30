@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
 import { InterviewProvider } from "@/context/InterviewContext";
 import VideoFeed from "@/components/VideoFeed";
 
@@ -29,14 +31,23 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <InterviewProvider>
-          {/* Persistent Video Background */}
-          <VideoFeed />
-          {/* Page Content */}
-          <div className="relative z-10 w-full h-full">
-            {children}
-          </div>
-        </InterviewProvider>
+        {/* Load MediaPipe Face Mesh from CDN */}
+        {/* Note: Error handling is done in VideoFeed.tsx during initialization */}
+        <Script
+          src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"
+          strategy="beforeInteractive"
+        />
+
+        <AuthProvider>
+          <InterviewProvider>
+            {/* Persistent Video Background */}
+            <VideoFeed />
+            {/* Page Content */}
+            <div className="relative z-10 w-full h-full">
+              {children}
+            </div>
+          </InterviewProvider>
+        </AuthProvider>
       </body>
     </html>
   );

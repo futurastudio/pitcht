@@ -1,94 +1,113 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import Prompter from '@/components/Prompter';
-import Controls from '@/components/Controls';
+import React, { useState } from 'react';
 import { useInterview } from '@/context/InterviewContext';
+import SessionSetupModal from '@/components/SessionSetupModal';
+import Header from '@/components/Header';
 
-const MOCK_QUESTIONS = [
-  "Tell me about a time you had to handle a difficult situation.",
-  "What is your greatest strength?",
-  "Where do you see yourself in 5 years?",
-  "Why do you want to work here?",
+const SESSION_TYPES = [
+  {
+    id: 'job-interview',
+    title: 'Job Interview',
+    description: 'Practice common interview questions for your dream job.',
+    icon: '💼',
+    color: 'from-blue-500 to-cyan-400',
+  },
+  {
+    id: 'sales-pitch',
+    title: 'Sales Pitch',
+    description: 'Refine your pitch and objection handling skills.',
+    icon: '🚀',
+    color: 'from-orange-500 to-red-400',
+  },
+  {
+    id: 'presentation',
+    title: 'Presentation',
+    description: 'Prepare for a keynote or class presentation.',
+    icon: '🎤',
+    color: 'from-purple-500 to-pink-400',
+  },
 ];
 
-export default function Home() {
-  const router = useRouter();
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [isRecording, setIsRecording] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const { setRecordedBlob } = useInterview();
+export default function Dashboard() {
+  const [selectedSession, setSelectedSession] = useState<{ id: string, title: string } | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  const handleToggleRecording = async () => {
-    if (isRecording) {
-      // Stop Recording
-      setIsRecording(false);
-      // @ts-ignore
-      if (window.stopRecording) {
-        // @ts-ignore
-        const blob = await window.stopRecording();
-        setRecordedBlob(blob); // Save to Context
-
-        const buffer = await blob.arrayBuffer();
-
-        // Save via Electron
-        // @ts-ignore
-        if (window.electron) {
-          // @ts-ignore
-          const result = await window.electron.saveVideo(buffer);
-          if (result.success) {
-            console.log('Video saved to:', result.filePath);
-            router.push('/analysis');
-          }
-        } else {
-          console.warn('Electron API not found (running in browser?)');
-          router.push('/analysis');
-        }
-      }
-    } else {
-      // Start Recording
-      setIsRecording(true);
-      // @ts-ignore
-      if (window.startRecording) {
-        // @ts-ignore
-        window.startRecording();
-      }
-    }
+  const handleSelectSession = (session: typeof SESSION_TYPES[0]) => {
+    setSelectedSession({ id: session.id, title: session.title });
+    setIsModalOpen(true);
   };
-
-  const handleNextQuestion = () => {
-    setCurrentQuestionIndex((prev) => (prev + 1) % MOCK_QUESTIONS.length);
-  };
-
-  if (!mounted) return null;
 
   return (
-    <main className="relative w-full h-full min-h-screen">
-      {/* VideoFeed is now in Layout, providing persistent background */}
+    <main className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-8">
+      {/* Header with Sign In */}
+      <Header />
 
-      {/* Foreground UI Layers */}
-      <Prompter
-        question={MOCK_QUESTIONS[currentQuestionIndex]}
-        isRecording={isRecording}
-      />
+      {/* Glass Overlay over Video Feed */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm -z-10" />
 
-      {/* Question Counter */}
-      <div className="absolute top-6 left-6 z-20 bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-full px-4 py-2">
-        <span className="text-white/80 font-medium text-sm">
-          Question {currentQuestionIndex + 1} / {MOCK_QUESTIONS.length}
-        </span>
+      {/* Grid Pattern Overlay */}
+      <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10 -z-10" />
+
+      <div className="max-w-5xl w-full space-y-12 z-10">
+        <div className="text-center space-y-4">
+          <h1 className="text-5xl md:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-white/90 to-white/60 tracking-tight drop-shadow-sm">
+            Pitcht
+          </h1>
+          <p className="text-xl text-white/80 max-w-2xl mx-auto font-medium drop-shadow-md">
+            Master your communication skills with AI-powered video analysis.
+            Choose a session type to begin.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {SESSION_TYPES.map((session) => (
+            <button
+              key={session.id}
+              onClick={() => handleSelectSession(session)}
+              className="group relative flex flex-col items-start p-8 rounded-3xl bg-white/10 hover:bg-white/20 border border-white/20 hover:border-white/40 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl text-left overflow-hidden"
+            >
+              {/* Hover Gradient Glow */}
+              <div className={`absolute inset-0 bg-gradient-to-br ${session.color} opacity-0 group-hover:opacity-10 transition-opacity duration-500`} />
+
+              <span className="text-4xl mb-6 block transform group-hover:scale-110 transition-transform duration-300 drop-shadow-md">
+                {session.icon}
+              </span>
+
+              <h3 className="text-2xl font-semibold text-white mb-2 group-hover:text-white/90 drop-shadow-sm">
+                {session.title}
+              </h3>
+
+              <p className="text-white/70 group-hover:text-white/90 leading-relaxed text-sm font-medium">
+                {session.description}
+              </p>
+
+              <div className="mt-8 flex items-center text-sm font-bold text-white/60 group-hover:text-white transition-colors">
+                Start Session <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <Controls
-        isRecording={isRecording}
-        onToggleRecording={handleToggleRecording}
-        onNextQuestion={handleNextQuestion}
+      <SessionSetupModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        sessionType={selectedSession?.id || ''}
+        sessionTitle={selectedSession?.title || ''}
       />
+
+      {/* Footer with Privacy Policy link */}
+      <footer className="absolute bottom-4 left-0 right-0 z-10">
+        <div className="text-center">
+          <a
+            href="/privacy"
+            className="text-sm text-white/60 hover:text-white/90 transition-colors"
+          >
+            Privacy Policy
+          </a>
+        </div>
+      </footer>
     </main>
   );
 }

@@ -39,3 +39,25 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Electron build artifacts
+/dist/
+/electron-dist/
+electron/preload.js
+
+# Python services (not deployed to Vercel)
+/python-services/
+
+# Documentation and planning files
+*.md
+!README.md
+
+# Scripts
+/scripts/
+
+# Temporary files
+/tmp/
+*.log
+
+# VSCode
+/.vscode/
