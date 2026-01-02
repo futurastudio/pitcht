@@ -9,7 +9,12 @@
  * - In development: Uses localhost
  */
 export function getApiUrl(endpoint: string): string {
-  const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000';
+  // In development, always use localhost for faster debugging
+  // In production, use Vercel cloud backend
+  const isDev = process.env.NODE_ENV === 'development';
+  const baseUrl = isDev
+    ? 'http://localhost:3000'
+    : (process.env.NEXT_PUBLIC_URL || 'http://localhost:3000');
 
   // Ensure endpoint starts with /
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;

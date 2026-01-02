@@ -36,6 +36,7 @@ interface InterviewContextType {
     setSessionContext: (context: string) => void;
     recordings: Recording[];
     addRecording: (recording: Recording) => Promise<{ recordingId?: string }>;
+    updateRecording: (recordingId: string, updates: Partial<Recording>) => void;
     clearSession: () => void;
     questions: Question[];
     setQuestions: (questions: Question[]) => void;
@@ -172,6 +173,15 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         }
     };
 
+    const updateRecording = (recordingId: string, updates: Partial<Recording>) => {
+        setRecordings(prev => prev.map(rec =>
+            rec.recordingId === recordingId
+                ? { ...rec, ...updates }
+                : rec
+        ));
+        console.log('✅ Recording updated in state:', recordingId, updates);
+    };
+
     const clearSession = () => {
         setSessionType(null);
         setSessionContext('');
@@ -193,6 +203,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
             setSessionContext,
             recordings,
             addRecording,
+            updateRecording,
             clearSession,
             questions,
             setQuestions,

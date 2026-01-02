@@ -15,7 +15,7 @@ import type { EyeTrackingMetrics } from '@/services/faceTracker';
 
 export default function InterviewPage() {
     const router = useRouter();
-    const { addRecording, sessionType, questions } = useInterview();
+    const { addRecording, updateRecording, sessionType, questions } = useInterview();
 
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [isRecording, setIsRecording] = useState(false);
@@ -222,6 +222,12 @@ export default function InterviewPage() {
 
                                             if (response.ok) {
                                                 console.log(`✅ Recording ${savedRecordingId} updated with transcript`);
+                                                // Update frontend state with transcript and speech metrics
+                                                updateRecording(savedRecordingId, {
+                                                    transcript,
+                                                    duration,
+                                                    ...speechMetrics
+                                                });
                                             } else {
                                                 console.error('Failed to update recording with transcript');
                                             }
