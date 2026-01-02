@@ -155,7 +155,7 @@ No markdown, no code blocks, no explanations - just the raw JSON array.`;
   try {
     const message = await retryWithBackoff(async () => {
       return await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022', // ⚡ 10x faster than Opus, perfect for question generation (this model is still valid)
+        model: 'claude-haiku-4-5', // ⚡ Latest Haiku (Oct 2025) - fast and cost-effective for question generation
         max_tokens: 1000, // ⚡ Optimized: questions typically need ~800 tokens (was 1500)
         system: [
           {
@@ -319,7 +319,7 @@ Return ONLY the JSON object, no markdown or code blocks.`;
   try {
     const message = await retryWithBackoff(async () => {
       return await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20240620', // Use Sonnet for feedback (more nuanced analysis than Haiku)
+        model: 'claude-sonnet-4-5-20250929', // Latest Sonnet 4.5 (Sept 2025) - best for nuanced feedback analysis
         max_tokens: 2000, // Increased for detailed communication analysis + examples
         system: [
           {
