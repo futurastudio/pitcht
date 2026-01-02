@@ -179,8 +179,11 @@ No markdown, no code blocks, no explanations - just the raw JSON array.`;
       .map((block) => (block as { type: 'text'; text: string }).text)
       .join('');
 
+    // Strip markdown code blocks if present (Claude 4.x sometimes wraps JSON in ```json ... ```)
+    const cleanedResponse = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
+
     // Parse JSON response
-    const questions = JSON.parse(responseText.trim()) as Question[];
+    const questions = JSON.parse(cleanedResponse) as Question[];
 
     // Replace string IDs with proper UUIDs for database compatibility
     // The database expects UUID for question_id, but Claude generates simple IDs like "q1", "q2"
@@ -343,8 +346,11 @@ Return ONLY the JSON object, no markdown or code blocks.`;
       .map((block) => (block as { type: 'text'; text: string }).text)
       .join('');
 
+    // Strip markdown code blocks if present (Claude 4.x sometimes wraps JSON in ```json ... ```)
+    const cleanedResponse = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
+
     // Parse JSON response
-    const feedback = JSON.parse(responseText.trim());
+    const feedback = JSON.parse(cleanedResponse);
 
     return feedback;
   } catch (error: any) {
