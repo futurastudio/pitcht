@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/utils/api';
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -46,7 +47,7 @@ export default function SettingsPage() {
 
     setIsLoadingPortal(true);
     try {
-      const response = await fetch('/api/create-portal-session', {
+      const response = await apiFetch(/'api/create-portal-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id }),
@@ -90,7 +91,7 @@ export default function SettingsPage() {
 
       const token = session.access_token;
 
-      const response = await fetch('/api/delete-account', {
+      const response = await apiFetch(/'api/delete-account', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

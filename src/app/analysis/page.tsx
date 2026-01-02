@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/utils/api';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useInterview, Recording } from '@/context/InterviewContext';
@@ -125,7 +126,7 @@ export default function Analysis() {
             setFeedbackError(null);
 
             try {
-                const response = await fetch('/api/generate-feedback', {
+                const response = await apiFetch(/'api/generate-feedback', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -200,7 +201,7 @@ export default function Analysis() {
             setIsGeneratingFeedback(true);
 
             try {
-                const response = await fetch('/api/generate-feedback', {
+                const response = await apiFetch(/'api/generate-feedback', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',

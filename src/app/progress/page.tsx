@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/utils/api';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -42,7 +43,7 @@ export default function ProgressTracking() {
 
             try {
                 // TODO: Replace with actual API call
-                // const response = await fetch('/api/progress');
+                // const response = await apiFetch(/'api/progress');
                 // const data = await response.json();
 
                 // Mock data for now

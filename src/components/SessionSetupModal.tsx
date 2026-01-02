@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useInterview } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
 import { canUserStartSession } from '@/services/subscriptionManager';
+import { apiFetch } from '@/utils/api';
 import PaywallModal from './PaywallModal';
 import type { SessionType, Question } from '@/types/interview';
 
@@ -47,7 +48,7 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
             }
 
             // Call the real API to generate questions
-            const response = await fetch('/api/generate-questions', {
+            const response = await apiFetch('/api/generate-questions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

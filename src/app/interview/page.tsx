@@ -1,5 +1,6 @@
 'use client';
 
+import { apiFetch } from '@/utils/api';
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -86,7 +87,7 @@ export default function InterviewPage() {
             }
 
             // Call transcribe API
-            const response = await fetch('/api/transcribe', {
+            const response = await apiFetch(/'api/transcribe', {
                 method: 'POST',
                 body: formData,
             });
@@ -208,7 +209,7 @@ export default function InterviewPage() {
 
                                         // Update recording with transcript via API
                                         try {
-                                            const response = await fetch('/api/update-recording', {
+                                            const response = await apiFetch(/'api/update-recording', {
                                                 method: 'PATCH',
                                                 headers: { 'Content-Type': 'application/json' },
                                                 body: JSON.stringify({
