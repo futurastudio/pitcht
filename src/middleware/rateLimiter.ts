@@ -37,6 +37,11 @@ export const RateLimitPresets = {
     GENERATE_FEEDBACK: {
         maxRequests: 15, // 15 feedback per hour per user
         windowMs: 60 * 60 * 1000
+    },
+    // Auth endpoints (prevent abuse)
+    AUTH_ENDPOINT: {
+        maxRequests: 5, // 5 requests per hour (strict to prevent abuse)
+        windowMs: 60 * 60 * 1000
     }
 } as const;
 
