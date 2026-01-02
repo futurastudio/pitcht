@@ -28,7 +28,7 @@ function SuccessContent() {
       console.log('🔍 Verifying subscription...', { sessionId, userId: user.id });
       setIsVerifying(true);
       try {
-        const response = await apiFetch(/'api/verify-subscription', {
+        const response = await apiFetch('/api/verify-subscription', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sessionId, userId: user.id }),

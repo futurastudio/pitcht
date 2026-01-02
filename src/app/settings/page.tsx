@@ -47,7 +47,7 @@ export default function SettingsPage() {
 
     setIsLoadingPortal(true);
     try {
-      const response = await apiFetch(/'api/create-portal-session', {
+      const response = await apiFetch('/api/create-portal-session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id }),
@@ -91,7 +91,7 @@ export default function SettingsPage() {
 
       const token = session.access_token;
 
-      const response = await apiFetch(/'api/delete-account', {
+      const response = await apiFetch('/api/delete-account', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

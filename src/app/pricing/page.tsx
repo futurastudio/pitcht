@@ -23,7 +23,7 @@ export default function PricingPage() {
 
     try {
       // Create Stripe checkout session
-      const response = await apiFetch(/'api/create-checkout-session', {
+      const response = await apiFetch('/api/create-checkout-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

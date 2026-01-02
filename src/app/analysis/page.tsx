@@ -126,7 +126,7 @@ export default function Analysis() {
             setFeedbackError(null);
 
             try {
-                const response = await apiFetch(/'api/generate-feedback', {
+                const response = await apiFetch('/api/generate-feedback', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -201,7 +201,7 @@ export default function Analysis() {
             setIsGeneratingFeedback(true);
 
             try {
-                const response = await apiFetch(/'api/generate-feedback', {
+                const response = await apiFetch('/api/generate-feedback', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
