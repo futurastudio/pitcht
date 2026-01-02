@@ -323,7 +323,7 @@ Return ONLY the JSON object, no markdown or code blocks.`;
     const message = await retryWithBackoff(async () => {
       return await anthropic.messages.create({
         model: 'claude-sonnet-4-5-20250929', // Latest Sonnet 4.5 (Sept 2025) - best for nuanced feedback analysis
-        max_tokens: 2000, // Increased for detailed communication analysis + examples
+        max_tokens: 4096, // Increased for Claude 4.x (more verbose than 3.5 Sonnet, needs more tokens for complete JSON)
         system: [
           {
             type: 'text' as const,
@@ -350,7 +350,16 @@ Return ONLY the JSON object, no markdown or code blocks.`;
     const cleanedResponse = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
 
     // Parse JSON response
-    const feedback = JSON.parse(cleanedResponse);
+    let feedback;
+    try {
+      feedback = JSON.parse(cleanedResponse);
+    } catch (parseError) {
+      // Log the problematic response for debugging
+      console.error('Failed to parse JSON response from Claude:',parseError);
+      console.error('Response text (first 500 chars):', cleanedResponse.substring(0, 500));
+      console.error('Response text (last 500 chars):', cleanedResponse.substring(cleanedResponse.length - 500));
+      throw parseError;
+    }
 
     return feedback;
   } catch (error: any) {
