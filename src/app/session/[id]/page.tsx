@@ -27,9 +27,19 @@ interface Recording {
   question_id: string;
   analyses: Array<{
     overall_score: number;
+    content_score?: number;
+    communication_score?: number;
+    delivery_score?: number;
     summary: string;
+    communication_patterns?: {
+      usedStructure?: string;
+      clarityLevel?: string;
+      concisenessLevel?: string;
+      exampleQuality?: string;
+    };
     strengths: any;
     improvements: any;
+    next_steps?: string[];
   }>;
 }
 
@@ -57,6 +67,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
   const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [openExamples, setOpenExamples] = useState<Record<number, boolean>>({});
 
   // Redirect to home if not logged in
   useEffect(() => {
@@ -282,6 +293,32 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
 
                   {selectedRecording.analyses && selectedRecording.analyses.length > 0 ? (
                     <div className="space-y-4">
+                      {/* 3-Score System */}
+                      {(selectedRecording.analyses[0].content_score !== undefined ||
+                        selectedRecording.analyses[0].communication_score !== undefined ||
+                        selectedRecording.analyses[0].delivery_score !== undefined) && (
+                        <div className="grid grid-cols-3 gap-3 mb-4">
+                          {selectedRecording.analyses[0].content_score !== undefined && (
+                            <div className="bg-white/5 rounded-xl p-3 text-center">
+                              <div className="text-xs text-white/50 uppercase mb-1">Content</div>
+                              <div className="text-xl font-bold text-white">{selectedRecording.analyses[0].content_score}</div>
+                            </div>
+                          )}
+                          {selectedRecording.analyses[0].communication_score !== undefined && (
+                            <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3 text-center">
+                              <div className="text-[10px] text-blue-300/70 uppercase mb-1 whitespace-nowrap">Communication</div>
+                              <div className="text-xl font-bold text-blue-200">{selectedRecording.analyses[0].communication_score}</div>
+                            </div>
+                          )}
+                          {selectedRecording.analyses[0].delivery_score !== undefined && (
+                            <div className="bg-white/5 rounded-xl p-3 text-center">
+                              <div className="text-xs text-white/50 uppercase mb-1">Delivery</div>
+                              <div className="text-xl font-bold text-white">{selectedRecording.analyses[0].delivery_score}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       <p className="text-white/80 text-sm leading-relaxed">
                         {selectedRecording.analyses[0].summary}
                       </p>
@@ -427,6 +464,135 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                           </div>
                         )}
                       </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Detailed Feedback Section with Communication Patterns and Framework Examples */}
+            {selectedRecording && selectedRecording.analyses && selectedRecording.analyses.length > 0 && selectedRecording.analyses[0].improvements && selectedRecording.analyses[0].improvements.length > 0 && (
+              <div className="space-y-6 mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                {/* Communication Patterns Card */}
+                {selectedRecording.analyses[0].communication_patterns && (
+                  <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6">
+                    <h3 className="text-lg font-semibold mb-4 text-white/90 flex items-center gap-2">
+                      <span>🎯</span> Communication Analysis
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      {selectedRecording.analyses[0].communication_patterns.usedStructure && (
+                        <div className="bg-white/5 rounded-xl p-3">
+                          <div className="text-xs text-white/50 uppercase mb-1">Structure</div>
+                          <div className="text-sm text-white capitalize">{selectedRecording.analyses[0].communication_patterns.usedStructure}</div>
+                        </div>
+                      )}
+                      {selectedRecording.analyses[0].communication_patterns.clarityLevel && (
+                        <div className="bg-white/5 rounded-xl p-3">
+                          <div className="text-xs text-white/50 uppercase mb-1">Clarity</div>
+                          <div className="text-sm text-white capitalize">{selectedRecording.analyses[0].communication_patterns.clarityLevel}</div>
+                        </div>
+                      )}
+                      {selectedRecording.analyses[0].communication_patterns.concisenessLevel && (
+                        <div className="bg-white/5 rounded-xl p-3">
+                          <div className="text-xs text-white/50 uppercase mb-1">Conciseness</div>
+                          <div className="text-sm text-white capitalize">{selectedRecording.analyses[0].communication_patterns.concisenessLevel}</div>
+                        </div>
+                      )}
+                      {selectedRecording.analyses[0].communication_patterns.exampleQuality && (
+                        <div className="bg-white/5 rounded-xl p-3">
+                          <div className="text-xs text-white/50 uppercase mb-1">Examples</div>
+                          <div className="text-sm text-white capitalize">{selectedRecording.analyses[0].communication_patterns.exampleQuality}</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Detailed Improvements with Framework Examples */}
+                <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6">
+                  <h3 className="text-lg font-semibold mb-4 text-white/90 flex items-center gap-2">
+                    <span>📚</span> Coaching Framework Examples
+                  </h3>
+                  <div className="space-y-4">
+                    {selectedRecording.analyses[0].improvements.map((improvement: any, idx: number) => (
+                      <div key={idx} className={`border-l-4 ${
+                        improvement.priority === 'high' ? 'border-red-400/50' :
+                        improvement.priority === 'medium' ? 'border-yellow-400/50' :
+                        'border-blue-400/50'
+                      } bg-white/5 p-4 rounded-lg`}>
+                        {/* Priority Badge */}
+                        <span className={`text-xs px-2 py-1 rounded-full ${
+                          improvement.priority === 'high' ? 'bg-red-500/20 text-red-300' :
+                          improvement.priority === 'medium' ? 'bg-yellow-500/20 text-yellow-300' :
+                          'bg-blue-500/20 text-blue-300'
+                        }`}>
+                          {improvement.priority.toUpperCase()}
+                        </span>
+
+                        {/* Area & Detail */}
+                        <h4 className="text-white font-semibold mt-3 capitalize">{improvement.area}</h4>
+                        <p className="text-white/70 text-sm mt-1">{improvement.detail}</p>
+
+                        {/* Suggestion */}
+                        <div className="mt-3 bg-white/5 p-3 rounded-lg border border-white/10">
+                          <p className="text-white/80 text-sm">💡 {improvement.suggestion}</p>
+                        </div>
+
+                        {/* Framework Example (Collapsible) */}
+                        {improvement.example && (
+                          <div className="mt-3">
+                            <button
+                              onClick={() => setOpenExamples(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                              className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors"
+                            >
+                              {openExamples[idx] ? (
+                                <>
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                  Hide Framework Example
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                  Show Framework Example
+                                </>
+                              )}
+                            </button>
+
+                            {openExamples[idx] && (
+                              <div className="mt-3 bg-blue-500/10 border border-blue-500/30 p-4 rounded-lg animate-in fade-in slide-in-from-top-2 duration-200">
+                                <div className="flex items-start gap-2 mb-2">
+                                  <span className="text-xs text-blue-400/70 uppercase font-semibold">Framework Template:</span>
+                                  <span className="text-xs text-blue-300/50">(Adapt with your details)</span>
+                                </div>
+                                <div className="text-white/90 text-sm leading-relaxed whitespace-pre-wrap font-mono bg-black/20 p-3 rounded">
+                                  {improvement.example}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Next Steps */}
+                  {selectedRecording.analyses[0].next_steps && selectedRecording.analyses[0].next_steps.length > 0 && (
+                    <div className="mt-6 pt-6 border-t border-white/10">
+                      <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
+                        <span>🎯</span> Next Steps
+                      </h4>
+                      <ul className="space-y-2">
+                        {selectedRecording.analyses[0].next_steps.map((step: string, idx: number) => (
+                          <li key={idx} className="flex items-start gap-2 text-white/70 text-sm">
+                            <span className="text-blue-400 font-bold">{idx + 1}.</span>
+                            <span>{step}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </div>

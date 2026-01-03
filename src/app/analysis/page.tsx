@@ -154,7 +154,11 @@ export default function Analysis() {
                         try {
                             await saveAnalysis(selectedRecording.recordingId, {
                                 overallScore: data.overallScore,
+                                contentScore: data.contentScore,
+                                communicationScore: data.communicationScore,
+                                deliveryScore: data.deliveryScore,
                                 summary: data.summary,
+                                communicationPatterns: data.communicationPatterns,
                                 strengths: data.strengths,
                                 improvements: data.improvements,
                                 nextSteps: data.nextSteps,
@@ -227,7 +231,11 @@ export default function Analysis() {
                         try {
                             await saveAnalysis(selectedRecording.recordingId, {
                                 overallScore: data.overallScore,
+                                contentScore: data.contentScore,
+                                communicationScore: data.communicationScore,
+                                deliveryScore: data.deliveryScore,
                                 summary: data.summary,
+                                communicationPatterns: data.communicationPatterns,
                                 strengths: data.strengths,
                                 improvements: data.improvements,
                                 nextSteps: data.nextSteps,
