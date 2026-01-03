@@ -7,7 +7,6 @@ import { useInterview, Recording } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
 import AccountConversionModal from '@/components/AccountConversionModal';
 import TranscriptViewer from '@/components/TranscriptViewer';
-import { analyzeSpeech } from '@/services/speechAnalyzer';
 import { saveAnalysis } from '@/services/sessionManager';
 import type { GenerateFeedbackResponse } from '@/app/api/generate-feedback/route';
 
@@ -494,15 +493,11 @@ export default function Analysis() {
                                     </h3>
 
                                     {(() => {
-                                        // Calculate real metrics from transcript
-                                        const metrics = selectedRecording.transcript
-                                            ? analyzeSpeech(selectedRecording.transcript, selectedRecording.duration)
-                                            : null;
-
-                                        const clarityScore = metrics?.clarityScore || 0;
-                                        const pacingScore = metrics?.pacingScore || 0;
-                                        const wpm = metrics?.wordsPerMinute || 0;
-                                        const fillerCount = metrics?.fillerWordCount || 0;
+                                        // Read metrics from database (already calculated during transcription)
+                                        const clarityScore = selectedRecording.clarityScore || 0;
+                                        const pacingScore = selectedRecording.pacingScore || 0;
+                                        const wpm = selectedRecording.wordsPerMinute || 0;
+                                        const fillerCount = selectedRecording.fillerWordCount || 0;
 
                                         // Sprint 5A: Video metrics
                                         const eyeContact = selectedRecording.eyeContactPercentage || 0;

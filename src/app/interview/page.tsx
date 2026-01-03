@@ -11,11 +11,12 @@ import { useInterview } from '@/context/InterviewContext';
 import { checkEmotionService, analyzeVideoPath } from '@/services/emotionAnalyzer';
 import { calculatePresenceScore } from '@/services/videoAnalyzer';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
+import { completeSession } from '@/services/sessionManager';
 import type { EyeTrackingMetrics } from '@/services/faceTracker';
 
 export default function InterviewPage() {
     const router = useRouter();
-    const { addRecording, updateRecording, sessionType, questions } = useInterview();
+    const { addRecording, updateRecording, sessionType, questions, sessionId } = useInterview();
 
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [isRecording, setIsRecording] = useState(false);
@@ -247,6 +248,16 @@ export default function InterviewPage() {
                         if (currentQuestionIndex < questions.length - 1) {
                             setCurrentQuestionIndex(prev => prev + 1);
                         } else {
+                            // Mark session as completed before navigating
+                            if (sessionId) {
+                                try {
+                                    await completeSession(sessionId);
+                                    console.log('✅ Session marked as completed');
+                                } catch (error) {
+                                    console.error('Failed to complete session:', error);
+                                    // Don't block navigation on error
+                                }
+                            }
                             router.push('/analysis');
                         }
                     }
@@ -288,7 +299,7 @@ export default function InterviewPage() {
         }
     };
 
-    const handleNextQuestion = () => {
+    const handleNextQuestion = async () => {
         // No longer need to wait for transcription - it runs in background
         // User can move to next question immediately after recording stops
 
@@ -296,6 +307,16 @@ export default function InterviewPage() {
         if (currentQuestionIndex < questions.length - 1) {
             setCurrentQuestionIndex(prev => prev + 1);
         } else {
+            // Mark session as completed before navigating
+            if (sessionId) {
+                try {
+                    await completeSession(sessionId);
+                    console.log('✅ Session marked as completed');
+                } catch (error) {
+                    console.error('Failed to complete session:', error);
+                    // Don't block navigation on error
+                }
+            }
             router.push('/analysis');
         }
     };

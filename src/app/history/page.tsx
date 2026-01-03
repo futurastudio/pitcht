@@ -40,6 +40,7 @@ export default function HistoryPage() {
   const [progressData, setProgressData] = useState<RecordingMetric[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<SessionType>('all');
+  const [refreshCount, setRefreshCount] = useState(0);
 
   // Redirect to home if not logged in
   useEffect(() => {
@@ -68,7 +69,7 @@ export default function HistoryPage() {
     fetchSessions();
   }, [user]);
 
-  // Fetch progress data
+  // Fetch progress data with auto-refresh for incomplete transcriptions
   useEffect(() => {
     const fetchProgress = async () => {
       if (!user) return;
@@ -76,6 +77,23 @@ export default function HistoryPage() {
       try {
         const data = await getUserProgressData(user.id);
         setProgressData(data);
+
+        // Check if any recordings have incomplete data (background transcription still processing)
+        const hasIncompleteData = data.some(recording =>
+          recording.filler_word_count === null ||
+          recording.clarity_score === null ||
+          recording.pacing_score === null
+        );
+
+        // Auto-refresh every 3 seconds if incomplete data exists (max 10 retries = 30 seconds)
+        if (hasIncompleteData && refreshCount < 10) {
+          console.log(`📊 Incomplete recording data detected, auto-refreshing in 3s (attempt ${refreshCount + 1}/10)`);
+          setTimeout(() => {
+            setRefreshCount(prev => prev + 1);
+          }, 3000);
+        } else if (refreshCount >= 10) {
+          console.log('⏱️ Max refresh attempts reached, stopping auto-refresh');
+        }
       } catch (error) {
         console.error('Error fetching progress data:', error);
         // Silent fail - progress section will show empty state
@@ -83,7 +101,7 @@ export default function HistoryPage() {
     };
 
     fetchProgress();
-  }, [user]);
+  }, [user, refreshCount]);
 
   // Filter sessions
   useEffect(() => {

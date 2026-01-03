@@ -11,7 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { transcribeAudio } from '@/services/whisper';
-import { analyzeSpeech } from '@/utils/speechAnalytics';
+import { analyzeSpeech } from '@/services/speechAnalyzer';
 import { withCSRFProtection } from '@/middleware/csrfProtection';
 import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
 
