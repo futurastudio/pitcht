@@ -11,6 +11,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { transcribeAudio } from '@/services/whisper';
+import { analyzeSpeech } from '@/utils/speechAnalytics';
 import { withCSRFProtection } from '@/middleware/csrfProtection';
 import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
 
@@ -85,12 +86,21 @@ export async function POST(request: NextRequest) {
       prompt: prompt || undefined,
     });
 
-    // Return transcription result
+    // Analyze speech metrics from transcript
+    const speechMetrics = analyzeSpeech(result.text, result.duration || 0);
+
+    // Return transcription result with speech metrics
     return NextResponse.json(
       {
         transcript: result.text,
         duration: result.duration,
         language: result.language,
+        speechMetrics: {
+          wordsPerMinute: speechMetrics.wordsPerMinute,
+          fillerWordCount: speechMetrics.fillerWordCount,
+          clarityScore: speechMetrics.clarityScore,
+          pacingScore: speechMetrics.pacingScore,
+        },
         transcribedAt: new Date().toISOString(),
       },
       { status: 200 }
