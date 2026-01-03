@@ -385,8 +385,8 @@ export default function Analysis() {
                                                         </div>
                                                     )}
                                                     {feedback.communicationScore !== undefined && (
-                                                        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3 text-center">
-                                                            <div className="text-xs text-blue-300/70 uppercase mb-1">Communication</div>
+                                                        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-center">
+                                                            <div className="text-[11px] text-blue-300/70 uppercase mb-1.5 whitespace-nowrap">Communication</div>
                                                             <div className="text-xl font-bold text-blue-200">{feedback.communicationScore}</div>
                                                         </div>
                                                     )}
