@@ -1,6 +1,21 @@
 # Pitcht Development Tasks
 
-> Last Updated: 2024-11-29
+> Last Updated: 2025-01-05
+
+---
+
+## Recent Updates
+
+### January 5, 2025 - Data Flow Fixes ✅
+**See**: `DATA_FLOW_FIXES_JAN5.md` for detailed documentation
+
+Fixed three critical data flow issues:
+1. **Sessions stuck in "In Progress"** - Added `completeSession()` calls to both interview exit paths
+2. **Clarity/Pacing showing 0%** - Changed Analysis page to read database values instead of recalculating
+3. **Filler Words showing 0→0** - Added auto-refresh logic (3s polling, max 10 retries) to History page
+
+**Files Modified**: `interview/page.tsx`, `analysis/page.tsx`, `history/page.tsx`, `api/transcribe/route.ts`
+**Deployment**: Production (commit `8e7b60f`)
 
 ---
 
