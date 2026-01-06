@@ -37,15 +37,33 @@ export interface Recording {
   questionId: string;
   videoBlob?: Blob;
   videoUrl?: string;
+  video_url?: string; // Database field (snake_case)
   transcript?: string;
   duration?: number; // seconds
-  // Sprint 4: Video Analysis Metrics
-  eyeContactPercentage?: number; // 0-100
-  gazeStability?: number; // 0-100
-  dominantEmotion?: string; // e.g., 'confident', 'neutral', 'nervous'
-  emotionConfidence?: number; // 0-100
-  presenceScore?: number; // 0-100 (combined eye contact + emotion)
+  recordingId?: string; // ID after save to database
+  // Speech Analysis Metrics (database snake_case fields)
+  words_per_minute?: number;
+  filler_word_count?: number;
+  clarity_score?: number; // 0-100
+  pacing_score?: number; // 0-100
+  // Sprint 4: Video Analysis Metrics (database snake_case fields)
+  eye_contact_percentage?: number; // 0-100
+  gaze_stability?: number; // 0-100
+  dominant_emotion?: string; // e.g., 'confident', 'neutral', 'nervous'
+  emotion_confidence?: number; // 0-100
+  presence_score?: number; // 0-100 (combined eye contact + emotion)
+  // JavaScript camelCase versions (for backwards compatibility with context)
+  wordsPerMinute?: number;
+  fillerWordCount?: number;
+  clarityScore?: number;
+  pacingScore?: number;
+  eyeContactPercentage?: number;
+  gazeStability?: number;
+  dominantEmotion?: string;
+  emotionConfidence?: number;
+  presenceScore?: number;
   createdAt: string;
+  created_at?: string; // Database field
 }
 
 export interface Session {
