@@ -208,34 +208,65 @@ export default function InterviewPage() {
                                         // Calculate speech metrics
                                         const speechMetrics = analyzeSpeech(transcript, duration);
 
-                                        // Update recording with transcript via API
+                                        console.log(`📊 Speech metrics calculated:`, {
+                                            recordingId: savedRecordingId,
+                                            duration,
+                                            wordsPerMinute: speechMetrics.wordsPerMinute,
+                                            fillerWordCount: speechMetrics.fillerWordCount,
+                                            clarityScore: speechMetrics.clarityScore,
+                                            pacingScore: speechMetrics.pacingScore,
+                                        });
+
+                                        // Update database directly (bypassing API route for reliability)
                                         try {
-                                            const response = await apiFetch('/api/update-recording', {
-                                                method: 'PATCH',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({
-                                                    recordingId: savedRecordingId,
+                                            // Import Supabase client dynamically
+                                            const { supabase } = await import('@/services/supabase');
+
+                                            const updateData = {
+                                                transcript: transcript || null,
+                                                duration: Math.round(duration),
+                                                // IMPORTANT: Check for 0 explicitly, don't use falsy check
+                                                words_per_minute: speechMetrics.wordsPerMinute !== undefined ? Math.round(speechMetrics.wordsPerMinute) : null,
+                                                filler_word_count: speechMetrics.fillerWordCount !== undefined ? Math.round(speechMetrics.fillerWordCount) : null,
+                                                clarity_score: speechMetrics.clarityScore !== undefined ? Math.round(speechMetrics.clarityScore) : null,
+                                                pacing_score: speechMetrics.pacingScore !== undefined ? Math.round(speechMetrics.pacingScore) : null,
+                                            };
+
+                                            console.log(`💾 Updating database for recording ${savedRecordingId}:`, updateData);
+
+                                            const { data, error } = await supabase
+                                                .from('recordings')
+                                                .update(updateData)
+                                                .eq('id', savedRecordingId)
+                                                .select();
+
+                                            if (error) {
+                                                console.error('❌ Database update failed:', error);
+                                                throw error;
+                                            }
+
+                                            console.log(`✅ Recording ${savedRecordingId} updated in database:`, data);
+
+                                            // Update frontend state with transcript and speech metrics
+                                            if (savedRecordingId) {
+                                                updateRecording(savedRecordingId, {
                                                     transcript,
                                                     duration,
-                                                    speechMetrics,
-                                                }),
-                                            });
-
-                                            if (response.ok) {
-                                                console.log(`✅ Recording ${savedRecordingId} updated with transcript`);
-                                                // Update frontend state with transcript and speech metrics
-                                                if (savedRecordingId) {
-                                                    updateRecording(savedRecordingId, {
-                                                        transcript,
-                                                        duration,
-                                                        ...speechMetrics
-                                                    });
-                                                }
-                                            } else {
-                                                console.error('Failed to update recording with transcript');
+                                                    ...speechMetrics
+                                                });
+                                                console.log(`✅ Recording ${savedRecordingId} updated in context`);
                                             }
                                         } catch (error) {
-                                            console.error('Error updating recording:', error);
+                                            console.error('❌ Error updating recording:', error);
+                                            // Still update context even if database update fails
+                                            if (savedRecordingId) {
+                                                updateRecording(savedRecordingId, {
+                                                    transcript,
+                                                    duration,
+                                                    ...speechMetrics
+                                                });
+                                                console.log(`⚠️ Recording ${savedRecordingId} updated in context only (database update failed)`);
+                                            }
                                         }
                                     }
                                 }).catch(error => {
