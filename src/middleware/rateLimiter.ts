@@ -35,7 +35,7 @@ export const RateLimitPresets = {
         windowMs: 60 * 60 * 1000
     },
     GENERATE_FEEDBACK: {
-        maxRequests: 15, // 15 feedback per hour per user
+        maxRequests: 20, // 20 feedback per hour (matches transcribe limit for 7-question sessions)
         windowMs: 60 * 60 * 1000
     },
     // Auth endpoints (prevent abuse)

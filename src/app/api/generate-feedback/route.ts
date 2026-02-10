@@ -6,7 +6,7 @@
  *
  * Security:
  * - CSRF Protection: Validates origin/referer headers
- * - Rate Limiting: 10 requests per hour per user
+ * - Rate Limiting: 20 requests per hour per user
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -69,9 +69,9 @@ export async function POST(request: NextRequest) {
     const csrfError = withCSRFProtection(request);
     if (csrfError) return csrfError;
 
-    // Rate Limiting (10 requests per hour)
+    // Rate Limiting (20 requests per hour)
     const userKey = getUserIdentifier(request);
-    const rateLimit = rateLimiter.check(userKey, RateLimitPresets.AI_ENDPOINT);
+    const rateLimit = rateLimiter.check(userKey, RateLimitPresets.GENERATE_FEEDBACK);
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
         {
           status: 429,
           headers: {
-            'X-RateLimit-Limit': String(RateLimitPresets.AI_ENDPOINT.maxRequests),
+            'X-RateLimit-Limit': String(RateLimitPresets.GENERATE_FEEDBACK.maxRequests),
             'X-RateLimit-Remaining': String(rateLimit.remaining),
             'X-RateLimit-Reset': String(rateLimit.resetAt),
           },
