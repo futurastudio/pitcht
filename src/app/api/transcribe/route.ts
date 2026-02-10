@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
         {
           status: 429,
           headers: {
-            'X-RateLimit-Limit': String(RateLimitPresets.AI_ENDPOINT.maxRequests),
+            'X-RateLimit-Limit': String(RateLimitPresets.TRANSCRIBE.maxRequests),
             'X-RateLimit-Remaining': String(rateLimit.remaining),
             'X-RateLimit-Reset': String(rateLimit.resetAt),
           },
