@@ -507,6 +507,13 @@ export default function InterviewPage() {
         }
     };
 
+    const handlePreviousQuestion = () => {
+        // Go back to previous question if not on first question
+        if (currentQuestionIndex > 0) {
+            setCurrentQuestionIndex(prev => prev - 1);
+        }
+    };
+
     const handleNextQuestion = async () => {
         // No longer need to wait for transcription - it runs in background
         // User can move to next question immediately after recording stops
@@ -624,7 +631,9 @@ export default function InterviewPage() {
             <Controls
                 isRecording={isRecording}
                 onToggleRecording={handleToggleRecording}
+                onPreviousQuestion={handlePreviousQuestion}
                 onNextQuestion={handleNextQuestion}
+                currentQuestionIndex={currentQuestionIndex}
                 recordingDuration={recordingDuration}
                 isTranscribing={false} // Always false now - transcription runs in background
             />
