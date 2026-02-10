@@ -122,6 +122,89 @@ export default function InterviewPage() {
         }
     };
 
+    // Helper function to generate AI feedback
+    const generateAIFeedback = async (
+        recordingId: string,
+        questionText: string,
+        transcript: string,
+        duration: number,
+        speechMetrics: any,
+        videoMetrics?: {
+            eyeContactPercentage?: number;
+            gazeStability?: number;
+            dominantEmotion?: string;
+            emotionConfidence?: number;
+            presenceScore?: number;
+        }
+    ): Promise<void> => {
+        try {
+            console.log(`🤖 Generating AI feedback for recording ${recordingId}...`);
+
+            // Call feedback API
+            const response = await apiFetch('/api/generate-feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sessionType: sessionType,
+                    questionText: questionText,
+                    transcript: transcript,
+                    context: interviewContext || '',
+                    duration: duration,
+                    wordsPerMinute: speechMetrics.wordsPerMinute,
+                    fillerWordCount: speechMetrics.fillerWordCount,
+                    clarityScore: speechMetrics.clarityScore,
+                    pacingScore: speechMetrics.pacingScore,
+                    eyeContactPercentage: videoMetrics?.eyeContactPercentage,
+                    dominantEmotion: videoMetrics?.dominantEmotion,
+                    presenceScore: videoMetrics?.presenceScore,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to generate feedback');
+            }
+
+            const feedback = await response.json();
+
+            // Save to analyses table
+            const { supabase } = await import('@/services/supabase');
+            const { error } = await supabase
+                .from('analyses')
+                .insert({
+                    recording_id: recordingId,
+                    overall_score: feedback.overallScore,
+                    content_score: feedback.contentScore,
+                    communication_score: feedback.communicationScore,
+                    delivery_score: feedback.deliveryScore,
+                    summary: feedback.summary,
+                    communication_patterns: feedback.communicationPatterns,
+                    strengths: feedback.strengths,
+                    improvements: feedback.improvements,
+                    next_steps: feedback.nextSteps,
+                });
+
+            if (error) {
+                console.error('❌ Failed to save feedback to database:', error);
+                throw error;
+            }
+
+            console.log(`✅ AI feedback generated and saved for recording ${recordingId}`);
+
+            toast.success('AI Feedback Ready', {
+                description: 'Your performance analysis is ready to view!',
+                duration: 4000,
+            });
+
+        } catch (error) {
+            console.error('Error generating AI feedback:', error);
+            toast.error('Feedback Generation Failed', {
+                description: 'Could not generate AI coaching. You can retry from the analysis page.',
+                duration: 5000,
+            });
+            // Don't throw - this is a non-critical enhancement
+        }
+    };
+
     const handleToggleRecording = async () => {
         if (isRecording) {
             // Stop Recording
@@ -269,6 +352,22 @@ export default function InterviewPage() {
                                                     ...speechMetrics
                                                 });
                                                 console.log(`✅ Recording ${savedRecordingId} updated in context`);
+
+                                                // Generate AI feedback (non-blocking)
+                                                generateAIFeedback(
+                                                    savedRecordingId,
+                                                    currentQuestion.text,
+                                                    transcript,
+                                                    duration,
+                                                    speechMetrics,
+                                                    {
+                                                        eyeContactPercentage: eyeTracking?.eyeContactPercentage,
+                                                        gazeStability: eyeTracking?.gazeStability,
+                                                        dominantEmotion: emotionData?.dominantEmotion,
+                                                        emotionConfidence: emotionData?.confidence,
+                                                        presenceScore: presenceScore,
+                                                    }
+                                                );
                                             }
                                         } catch (error) {
                                             console.error('❌ Error updating recording:', error);
