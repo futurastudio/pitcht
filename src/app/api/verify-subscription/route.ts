@@ -38,6 +38,33 @@ export async function POST(request: Request) {
       );
     }
 
+    // SECURITY: Verify the authenticated user matches the userId in the request
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: 'Missing authorization header' },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+
+    if (authError || !authUser) {
+      return NextResponse.json(
+        { error: 'Invalid or expired authentication token' },
+        { status: 401 }
+      );
+    }
+
+    // CRITICAL: Verify userId matches authenticated user
+    if (authUser.id !== userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized - user ID mismatch' },
+        { status: 403 }
+      );
+    }
+
     // Check if subscription already exists in database (using admin client)
     const { data: existingSubscription, error: checkError } = await supabaseAdmin
       .from('subscriptions')
