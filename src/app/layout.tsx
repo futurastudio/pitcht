@@ -5,6 +5,7 @@ import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { InterviewProvider } from "@/context/InterviewContext";
 import VideoFeed from "@/components/VideoFeed";
+import { Toaster } from "sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,6 +49,8 @@ export default function RootLayout({
             </div>
           </InterviewProvider>
         </AuthProvider>
+        {/* Toast Notifications */}
+        <Toaster position="top-right" richColors />
       </body>
     </html>
   );

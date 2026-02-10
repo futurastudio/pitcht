@@ -13,6 +13,7 @@ import { calculatePresenceScore } from '@/services/videoAnalyzer';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
 import { completeSession } from '@/services/sessionManager';
 import type { EyeTrackingMetrics } from '@/services/faceTracker';
+import { toast } from 'sonner';
 
 export default function InterviewPage() {
     const router = useRouter();
@@ -104,6 +105,17 @@ export default function InterviewPage() {
             };
         } catch (error) {
             console.error('Error transcribing audio:', error);
+
+            // Show user-friendly error notification
+            const errorMessage = error instanceof Error
+                ? error.message
+                : 'Failed to transcribe audio. Please try again.';
+
+            toast.error('Transcription Failed', {
+                description: errorMessage,
+                duration: 5000,
+            });
+
             return { transcript: '', duration: undefined };
         } finally {
             setIsTranscribing(false);
@@ -275,6 +287,12 @@ export default function InterviewPage() {
                                     console.error('Background transcription failed:', error);
                                     // Transcription failed - hide spinner
                                     setIsTranscribing(false);
+
+                                    // Notify user of background processing failure
+                                    toast.error('Processing Failed', {
+                                        description: 'Your answer could not be processed. Data has been saved for retry.',
+                                        duration: 7000,
+                                    });
                                 });
                             }
                         }
