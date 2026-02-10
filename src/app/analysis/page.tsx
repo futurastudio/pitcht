@@ -105,22 +105,69 @@ export default function Analysis() {
         loadVideo();
     }, [selectedRecording]);
 
-    // Generate feedback when recording is selected
+    // Load existing feedback from database when recording is selected
     useEffect(() => {
-        const generateFeedbackForRecording = async () => {
+        const loadOrGenerateFeedback = async () => {
             if (!selectedRecording) {
                 setFeedback(null);
                 setFeedbackError(null);
                 return;
             }
 
-            // Only generate feedback if we have a transcript
+            // Only proceed if we have a transcript
             if (!selectedRecording.transcript) {
                 setFeedback(null);
                 setFeedbackError(null);
                 return;
             }
 
+            // First, try to load existing feedback from database
+            if (selectedRecording.recordingId) {
+                try {
+                    const { supabase } = await import('@/services/supabase');
+                    const { data: analyses, error } = await supabase
+                        .from('analyses')
+                        .select('*')
+                        .eq('recording_id', selectedRecording.recordingId)
+                        .order('created_at', { ascending: false })
+                        .limit(1);
+
+                    if (!error && analyses && analyses.length > 0) {
+                        // Feedback already exists! Use it instead of regenerating
+                        const analysis = analyses[0];
+                        setFeedback({
+                            overallScore: analysis.overall_score,
+                            contentScore: analysis.content_score,
+                            communicationScore: analysis.communication_score,
+                            deliveryScore: analysis.delivery_score,
+                            summary: analysis.summary,
+                            communicationPatterns: analysis.communication_patterns,
+                            strengths: analysis.strengths,
+                            improvements: analysis.improvements,
+                            nextSteps: analysis.next_steps,
+                            metrics: {
+                                wordsPerMinute: selectedRecording.wordsPerMinute || 0,
+                                fillerWordCount: selectedRecording.fillerWordCount || 0,
+                                clarityScore: selectedRecording.clarityScore || 0,
+                                pacingScore: selectedRecording.pacingScore || 0,
+                                totalWords: 0,
+                                eyeContactPercentage: selectedRecording.eyeContactPercentage,
+                                dominantEmotion: selectedRecording.dominantEmotion,
+                                presenceScore: selectedRecording.presenceScore,
+                            },
+                            generatedAt: analysis.created_at,
+                        });
+                        setFeedbackError(null);
+                        console.log('✅ Loaded existing feedback from database');
+                        return; // Don't generate new feedback
+                    }
+                } catch (error) {
+                    console.warn('Could not load existing feedback:', error);
+                    // Continue to generation if load fails
+                }
+            }
+
+            // No existing feedback found - generate new feedback
             setIsGeneratingFeedback(true);
             setFeedbackError(null);
 
@@ -187,7 +234,7 @@ export default function Analysis() {
             }
         };
 
-        generateFeedbackForRecording();
+        loadOrGenerateFeedback();
     }, [selectedRecording, sessionType, sessionContext]);
 
     // Retry function for failed feedback generation
