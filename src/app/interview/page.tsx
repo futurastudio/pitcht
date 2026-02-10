@@ -249,11 +249,7 @@ export default function InterviewPage() {
             }
 
             console.log(`✅ AI feedback generated and saved for recording ${recordingId}`);
-
-            toast.success('AI Feedback Ready', {
-                description: 'Your performance analysis is ready to view!',
-                duration: 4000,
-            });
+            // Note: Success toast removed to avoid distracting user during next question
 
         } catch (error) {
             console.error('Error generating AI feedback:', error);
