@@ -200,7 +200,6 @@ export default function InterviewPage() {
 
                             // Start background transcription (non-blocking)
                             if (savedRecordingId) {
-                                setIsTranscribing(false); // Allow user to continue immediately
                                 console.log(`🎙️ Starting background transcription for recording ${savedRecordingId}...`);
 
                                 transcriptionPromise.then(async ({ transcript, duration }) => {
@@ -247,6 +246,9 @@ export default function InterviewPage() {
 
                                             console.log(`✅ Recording ${savedRecordingId} updated in database:`, data);
 
+                                            // Transcription complete - hide spinner
+                                            setIsTranscribing(false);
+
                                             // Update frontend state with transcript and speech metrics
                                             if (savedRecordingId) {
                                                 updateRecording(savedRecordingId, {
@@ -271,6 +273,8 @@ export default function InterviewPage() {
                                     }
                                 }).catch(error => {
                                     console.error('Background transcription failed:', error);
+                                    // Transcription failed - hide spinner
+                                    setIsTranscribing(false);
                                 });
                             }
                         }
