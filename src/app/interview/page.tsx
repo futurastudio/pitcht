@@ -177,9 +177,9 @@ export default function InterviewPage() {
             });
 
             return { transcript: '', duration: undefined };
-        } finally {
-            setIsTranscribing(false);
         }
+        // Note: Don't set isTranscribing(false) here - it's handled in the background promise handler
+        // after the database update completes (line 405) or fails (line 448)
     };
 
     // Helper function to generate AI feedback
