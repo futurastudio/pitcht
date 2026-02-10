@@ -64,6 +64,49 @@ export default function InterviewPage() {
         ]);
     };
 
+    // Helper function with retry logic and exponential backoff
+    const withRetry = async <T,>(
+        operation: () => Promise<T>,
+        options: {
+            maxAttempts?: number;
+            initialDelayMs?: number;
+            maxDelayMs?: number;
+            onRetry?: (attempt: number, error: Error) => void;
+        } = {}
+    ): Promise<T> => {
+        const {
+            maxAttempts = 3,
+            initialDelayMs = 2000,
+            maxDelayMs = 10000,
+            onRetry = () => {},
+        } = options;
+
+        let lastError: Error;
+
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return await operation();
+            } catch (error) {
+                lastError = error as Error;
+
+                if (attempt < maxAttempts) {
+                    // Exponential backoff: 2s, 4s, 8s
+                    const delayMs = Math.min(
+                        initialDelayMs * Math.pow(2, attempt - 1),
+                        maxDelayMs
+                    );
+
+                    console.log(`⏳ Retry attempt ${attempt}/${maxAttempts} in ${delayMs}ms...`);
+                    onRetry(attempt, lastError);
+
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
+                }
+            }
+        }
+
+        throw lastError!;
+    };
+
     // Helper function to transcribe audio
     const transcribeRecording = async (audioBlob: Blob): Promise<{ transcript: string; duration?: number }> => {
         try {
@@ -78,33 +121,50 @@ export default function InterviewPage() {
                 throw new Error(`Audio file too large (${fileSizeMB.toFixed(2)}MB). Maximum: 25MB. Please record shorter answers.`);
             }
 
-            // Create FormData with the audio-only file
-            const formData = new FormData();
-            const audioFile = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
-            formData.append('audio', audioFile);
+            // Wrap API call with retry logic
+            const result = await withRetry(
+                async () => {
+                    // Create FormData with the audio-only file
+                    const formData = new FormData();
+                    const audioFile = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
+                    formData.append('audio', audioFile);
 
-            // Optional: Add context as prompt for better accuracy
-            if (currentQuestion) {
-                formData.append('prompt', currentQuestion.text);
-            }
+                    // Optional: Add context as prompt for better accuracy
+                    if (currentQuestion) {
+                        formData.append('prompt', currentQuestion.text);
+                    }
 
-            // Call transcribe API
-            const response = await apiFetch('/api/transcribe', {
-                method: 'POST',
-                body: formData,
-            });
+                    // Call transcribe API
+                    const response = await apiFetch('/api/transcribe', {
+                        method: 'POST',
+                        body: formData,
+                    });
 
-            if (!response.ok) {
-                throw new Error('Failed to transcribe audio');
-            }
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Transcription failed');
+                    }
 
-            const data = await response.json();
+                    return await response.json();
+                },
+                {
+                    maxAttempts: 3,
+                    initialDelayMs: 2000,
+                    onRetry: (attempt, error) => {
+                        toast.info(`Retrying transcription... (Attempt ${attempt}/3)`, {
+                            description: error.message,
+                            duration: 2000,
+                        });
+                    },
+                }
+            );
+
             return {
-                transcript: data.transcript,
-                duration: data.duration,
+                transcript: result.transcript,
+                duration: result.duration,
             };
         } catch (error) {
-            console.error('Error transcribing audio:', error);
+            console.error('Error transcribing audio after retries:', error);
 
             // Show user-friendly error notification
             const errorMessage = error instanceof Error
@@ -112,8 +172,8 @@ export default function InterviewPage() {
                 : 'Failed to transcribe audio. Please try again.';
 
             toast.error('Transcription Failed', {
-                description: errorMessage,
-                duration: 5000,
+                description: `All retry attempts exhausted. ${errorMessage}`,
+                duration: 7000,
             });
 
             return { transcript: '', duration: undefined };
