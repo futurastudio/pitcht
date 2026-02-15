@@ -32,12 +32,15 @@ export default function ProgressMetrics({ recordings }: ProgressMetricsProps) {
     );
   }
 
-  // Calculate overall performance score (average of all metrics)
+  // Use last 10 sessions consistently for all metrics
+  const recentRecordings = recordings.slice(-10);
+
+  // Calculate overall performance score (average of last 10 sessions)
   const calculateOverallScore = () => {
     let totalScore = 0;
     let count = 0;
 
-    recordings.forEach(rec => {
+    recentRecordings.forEach(rec => {
       const scores = [
         rec.clarity_score,
         rec.pacing_score,
@@ -54,27 +57,20 @@ export default function ProgressMetrics({ recordings }: ProgressMetricsProps) {
     return count > 0 ? Math.round(totalScore / count) : 0;
   };
 
-  // Calculate trend (compare last session vs average of previous sessions)
+  // Calculate trend (compare recent 5 vs. previous 5 within last 10)
   const calculateTrend = () => {
-    if (recordings.length < 2) return 0;
+    if (recentRecordings.length < 2) return 0;
 
-    const lastRecording = recordings[recordings.length - 1];
-    const previousRecordings = recordings.slice(0, -1);
+    // If we have 10+ recordings, compare last 5 vs. previous 5
+    // If we have 5-9 recordings, compare last half vs. first half
+    const midpoint = Math.floor(recentRecordings.length / 2);
+    const olderRecordings = recentRecordings.slice(0, midpoint);
+    const newerRecordings = recentRecordings.slice(midpoint);
 
-    const lastScore = [
-      lastRecording.clarity_score,
-      lastRecording.pacing_score,
-      lastRecording.eye_contact_percentage,
-      lastRecording.presence_score,
-    ].filter(s => s !== null) as number[];
-
-    const lastAvg = lastScore.length > 0
-      ? lastScore.reduce((sum, s) => sum + s, 0) / lastScore.length
-      : 0;
-
-    let previousTotal = 0;
-    let previousCount = 0;
-    previousRecordings.forEach(rec => {
+    // Calculate average for older recordings
+    let olderTotal = 0;
+    let olderCount = 0;
+    olderRecordings.forEach(rec => {
       const scores = [
         rec.clarity_score,
         rec.pacing_score,
@@ -83,25 +79,43 @@ export default function ProgressMetrics({ recordings }: ProgressMetricsProps) {
       ].filter(s => s !== null) as number[];
 
       if (scores.length > 0) {
-        previousTotal += scores.reduce((sum, s) => sum + s, 0) / scores.length;
-        previousCount++;
+        olderTotal += scores.reduce((sum, s) => sum + s, 0) / scores.length;
+        olderCount++;
       }
     });
 
-    const previousAvg = previousCount > 0 ? previousTotal / previousCount : 0;
-    return Math.round(lastAvg - previousAvg);
+    // Calculate average for newer recordings
+    let newerTotal = 0;
+    let newerCount = 0;
+    newerRecordings.forEach(rec => {
+      const scores = [
+        rec.clarity_score,
+        rec.pacing_score,
+        rec.eye_contact_percentage,
+        rec.presence_score,
+      ].filter(s => s !== null) as number[];
+
+      if (scores.length > 0) {
+        newerTotal += scores.reduce((sum, s) => sum + s, 0) / scores.length;
+        newerCount++;
+      }
+    });
+
+    const olderAvg = olderCount > 0 ? olderTotal / olderCount : 0;
+    const newerAvg = newerCount > 0 ? newerTotal / newerCount : 0;
+    return Math.round(newerAvg - olderAvg);
   };
 
-  // Prepare eye contact data (last 5 sessions)
-  const eyeContactData = recordings
+  // Prepare eye contact data (last 5 of last 10 sessions for cleaner visualization)
+  const eyeContactData = recentRecordings
     .slice(-5)
     .map((rec, idx) => ({
       index: idx,
       value: rec.eye_contact_percentage || 0,
     }));
 
-  // Prepare filler words data (last 5 sessions)
-  const fillerWordsData = recordings
+  // Prepare filler words data (last 5 of last 10 sessions for cleaner visualization)
+  const fillerWordsData = recentRecordings
     .slice(-5)
     .map((rec, idx) => ({
       index: idx,
@@ -132,17 +146,18 @@ export default function ProgressMetrics({ recordings }: ProgressMetricsProps) {
             {trend > 0 ? (
               <>
                 <span className="text-green-400">↑ +{trend}%</span>
-                <span className="text-white/50">from previous sessions</span>
+                <span className="text-white/50">recent improvement</span>
               </>
             ) : trend < 0 ? (
               <>
                 <span className="text-red-400">↓ {trend}%</span>
-                <span className="text-white/50">from previous sessions</span>
+                <span className="text-white/50">recent change</span>
               </>
             ) : (
-              <span className="text-white/50">No change</span>
+              <span className="text-white/50">Steady performance</span>
             )}
           </div>
+          <div className="text-xs text-white/40 mt-1">Last {recentRecordings.length} sessions</div>
         </div>
 
         {/* Eye Contact Card */}
