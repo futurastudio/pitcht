@@ -89,13 +89,6 @@ export default function Header() {
                       </Link>
 
                       <Link
-                        href="/progress"
-                        className="block w-full text-left px-4 py-2 text-white/80 hover:bg-white/10 rounded-lg transition-colors text-sm"
-                      >
-                        Progress Tracking
-                      </Link>
-
-                      <Link
                         href="/settings"
                         className="block w-full text-left px-4 py-2 text-white/80 hover:bg-white/10 rounded-lg transition-colors text-sm"
                       >
