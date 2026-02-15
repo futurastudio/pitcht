@@ -5,6 +5,7 @@ import React, { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/services/supabase';
 import Header from '@/components/Header';
 
 function SuccessContent() {
@@ -28,9 +29,21 @@ function SuccessContent() {
       console.log('🔍 Verifying subscription...', { sessionId, userId: user.id });
       setIsVerifying(true);
       try {
+        // Get the current session token for authorization
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (sessionError || !session) {
+          console.error('No active session for verification:', sessionError);
+          setIsVerifying(false);
+          return;
+        }
+
         const response = await apiFetch('/api/verify-subscription', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
           body: JSON.stringify({ sessionId, userId: user.id }),
         });
 

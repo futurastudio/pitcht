@@ -47,9 +47,22 @@ export default function SettingsPage() {
 
     setIsLoadingPortal(true);
     try {
+      // Get the current session token for authorization
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        console.error('No active session:', sessionError);
+        alert('Please sign in again to manage your subscription.');
+        setIsLoadingPortal(false);
+        return;
+      }
+
       const response = await apiFetch('/api/create-portal-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({ userId: user.id }),
       });
 

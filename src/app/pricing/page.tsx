@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/services/supabase';
 import Header from '@/components/Header';
 
 export default function PricingPage() {
@@ -22,11 +23,22 @@ export default function PricingPage() {
     setIsLoading(priceId);
 
     try {
+      // Get the current session token for authorization
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        console.error('No active session:', sessionError);
+        alert('Please sign in again to subscribe.');
+        setIsLoading(null);
+        return;
+      }
+
       // Create Stripe checkout session
       const response = await apiFetch('/api/create-checkout-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           priceId,
