@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useInterview } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
@@ -9,7 +9,7 @@ import { apiFetch } from '@/utils/api';
 import PaywallModal from './PaywallModal';
 import SignupModal from './SignupModal';
 import LoginModal from './LoginModal';
-import type { SessionType, Question } from '@/types/interview';
+import type { SessionType } from '@/types/interview';
 
 interface SessionSetupModalProps {
     isOpen: boolean;
@@ -33,11 +33,26 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
     const [showSignup, setShowSignup] = useState(false);
     const [showLogin, setShowLogin] = useState(false);
 
-    if (!isOpen) return null;
+    /**
+     * pendingResume: set to true when the user completes signup/login inside
+     * this modal. A useEffect watches for the user to appear in AuthContext
+     * and then triggers the full start flow — no arbitrary setTimeout needed.
+     */
+    const pendingResume = useRef(false);
+
+    // When a pending resume is set AND the user lands in AuthContext,
+    // run the full start flow (including paywall check).
+    useEffect(() => {
+        if (pendingResume.current && user) {
+            pendingResume.current = false;
+            runStart();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user]);
 
     /**
      * Core generate-and-navigate logic.
-     * Called either directly (authenticated) or after signup completes.
+     * Only called once auth + paywall checks have passed.
      */
     const runGenerate = useCallback(async (contextValue: string) => {
         setIsGenerating(true);
@@ -46,9 +61,7 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
         try {
             const response = await apiFetch('/api/generate-questions', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     sessionType: sessionType as SessionType,
                     context: contextValue.trim(),
@@ -75,7 +88,11 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
         }
     }, [sessionType, clearSession, setSessionType, setSessionContext, setQuestions, router]);
 
-    const handleStart = async () => {
+    /**
+     * Full start flow with auth + paywall checks.
+     * Reads from component state directly — always uses current values.
+     */
+    const runStart = useCallback(async () => {
         // Gate 1: Not authenticated — show signup modal, preserve context state
         if (!user) {
             setShowSignup(true);
@@ -99,26 +116,29 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
         }
 
         await runGenerate(context);
-    };
+    }, [user, subscriptionStatus, context, runGenerate]);
 
     /**
      * Called by SignupModal after account creation succeeds.
-     * The user is now authenticated — resume the flow automatically.
+     * Sets a pending flag — useEffect picks it up once AuthContext has the user.
      */
     const handleSignupComplete = useCallback(() => {
         setShowSignup(false);
-        // Small delay to let AuthContext update with the new user
-        setTimeout(() => runGenerate(context), 300);
-    }, [context, runGenerate]);
+        pendingResume.current = true;
+        // Note: useEffect on [user] will fire the full runStart once user is set
+    }, []);
 
     /**
      * Called by LoginModal after login succeeds.
-     * Resume the flow automatically.
+     * Same pattern — wait for AuthContext to update, then resume.
      */
     const handleLoginComplete = useCallback(() => {
         setShowLogin(false);
-        setTimeout(() => runGenerate(context), 300);
-    }, [context, runGenerate]);
+        pendingResume.current = true;
+    }, []);
+
+    // Early return AFTER all hooks — respects React rules of hooks
+    if (!isOpen) return null;
 
     return (
         <>
@@ -216,7 +236,7 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                                         Cancel
                                     </button>
                                     <button
-                                        onClick={handleStart}
+                                        onClick={runStart}
                                         className="px-6 py-2 rounded-full text-sm font-bold text-black bg-white hover:bg-white/90 transition-colors shadow-lg"
                                     >
                                         {user ? 'Start Simulation' : 'Continue →'}

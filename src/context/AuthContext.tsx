@@ -100,12 +100,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Check free trial usage: 1 session lifetime total (not per-month).
+      // Check free trial usage: 1 completed session lifetime.
+      // Only count completed sessions — an abandoned/in-progress session does not
+      // consume the trial so users aren't permanently locked out by a refresh or crash.
       // Trial status comes exclusively from the subscriptions table (managed by Stripe webhooks).
       const { count } = await supabase
         .from('sessions')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .eq('status', 'completed');
 
       const sessionsTotal = count || 0;
       const TRIAL_SESSION_LIMIT = 1;

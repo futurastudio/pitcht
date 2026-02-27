@@ -60,11 +60,14 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       };
     }
 
-    // Free trial: 1 session lifetime — count all sessions ever created by this user
+    // Free trial: 1 completed session lifetime.
+    // Only count completed sessions — an abandoned/in-progress session does not
+    // consume the trial so users aren't permanently locked out by a refresh or crash.
     const { count } = await supabase
       .from('sessions')
       .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('status', 'completed');
 
     const sessionsThisMonth = count || 0;
     // Trial users get exactly 1 session total (counted lifetime, not per-month)
