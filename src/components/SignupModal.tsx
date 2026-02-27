@@ -80,11 +80,11 @@ export default function SignupModal({ isOpen, onClose, onLogin }: SignupModalPro
         )}
 
         {/* Trial Benefits */}
-        <div className="mb-6 p-4 bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-white/10 rounded-xl">
+        <div className="mb-6 p-4 bg-white/5 border border-white/10 rounded-xl">
           <p className="text-white/90 text-sm font-semibold mb-2">Your 7-day trial includes:</p>
           <ul className="space-y-1.5 text-white/70 text-sm">
             <li className="flex items-center gap-2">
-              <span className="text-green-400">✓</span> Unlimited practice sessions
+              <span className="text-green-400">✓</span> Unlimited sessions for 7 days
             </li>
             <li className="flex items-center gap-2">
               <span className="text-green-400">✓</span> AI-powered feedback
