@@ -5,10 +5,9 @@ import Link from 'next/link';
 import { use } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useInterview } from '@/context/InterviewContext';
 import { getSessionDetails, getVideoUrl } from '@/services/sessionManager';
 import TranscriptViewer from '@/components/TranscriptViewer';
-import { analyzeSpeech } from '@/services/speechAnalyzer';
-import type { GenerateFeedbackResponse } from '@/app/api/generate-feedback/route';
 
 interface Recording {
   id: string;
@@ -63,11 +62,13 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
   const { id } = use(params);
   const router = useRouter();
   const { user, loading } = useAuth();
+  const { repeatSession } = useInterview();
   const [session, setSession] = useState<SessionDetails | null>(null);
   const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [openExamples, setOpenExamples] = useState<Record<number, boolean>>({});
+  const [isVideoExpanded, setIsVideoExpanded] = useState(false);
 
   // Redirect to home if not logged in
   useEffect(() => {
@@ -227,7 +228,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                         </span>
                         {rec.duration && (
                           <span className="text-[10px] text-white/60 font-mono bg-white/10 px-1.5 py-0.5 rounded">
-                            {Math.floor(rec.duration / 60)}:{(rec.duration % 60).toString().padStart(2, '0')}
+                            {Math.floor(rec.duration / 60)}:{Math.floor(rec.duration % 60).toString().padStart(2, '0')}
                           </span>
                         )}
                       </div>
@@ -256,29 +257,12 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
 
           {/* Right Area: Analysis View (70%) */}
           <div className="flex-1 space-y-6">
-            {/* Video Player */}
-            <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-1 aspect-video flex items-center justify-center bg-black/40 overflow-hidden relative">
-              {videoSrc ? (
-                <video
-                  src={videoSrc}
-                  controls
-                  className="w-full h-full object-contain rounded-2xl"
-                />
-              ) : (
-                <div className="text-center p-8">
-                  <p className="text-white/50 mb-2">Select a recording to view video</p>
-                </div>
-              )}
-            </div>
 
-            {/* Transcript Viewer */}
-            {selectedRecording && selectedRecording.transcript && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <TranscriptViewer
-                  transcript={selectedRecording.transcript}
-                  duration={selectedRecording.duration || 0}
-                  highlightFillerWords={true}
-                />
+            {/* Question Being Reviewed */}
+            {selectedRecording && (
+              <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3">
+                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1.5">Question</div>
+                <p className="text-white/90 font-medium text-sm leading-relaxed">{getQuestionForRecording(selectedRecording)}</p>
               </div>
             )}
 
@@ -293,29 +277,63 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
 
                   {selectedRecording.analyses && selectedRecording.analyses.length > 0 ? (
                     <div className="space-y-4">
+                      {/* #31 Biggest Improvement Callout */}
+                      {selectedRecording.analyses[0].content_score !== undefined &&
+                       selectedRecording.analyses[0].communication_score !== undefined &&
+                       selectedRecording.analyses[0].delivery_score !== undefined && (() => {
+                        const scores = [
+                          { label: 'Content', score: selectedRecording.analyses[0].content_score! },
+                          { label: 'Comms', score: selectedRecording.analyses[0].communication_score! },
+                          { label: 'Delivery', score: selectedRecording.analyses[0].delivery_score! },
+                        ];
+                        const lowest = scores.reduce((a, b) => a.score <= b.score ? a : b);
+                        const allGood = scores.every(s => s.score >= 70);
+                        const borderColor = allGood ? 'border-green-400/50' : lowest.score < 50 ? 'border-red-400/60' : 'border-yellow-400/60';
+                        const textColor = allGood ? 'text-green-300' : lowest.score < 50 ? 'text-red-300' : 'text-yellow-300';
+                        const message = allGood
+                          ? `Strong session — your lowest was ${lowest.label} (${lowest.score}). Keep going.`
+                          : lowest.score < 50
+                            ? (lowest.label === 'Content' ? 'Add a concrete example to anchor your answer.'
+                                : lowest.label === 'Comms' ? 'Structure before you speak — try the STAR method.'
+                                : 'Keep practicing — confidence builds with repetition.')
+                            : (lowest.label === 'Content' ? 'Sharpen with a specific metric or outcome.'
+                                : lowest.label === 'Comms' ? 'Tighten transitions between your ideas.'
+                                : 'Reduce filler words and your presence will jump.');
+                        return (
+                          <div className={`border-l-2 ${borderColor} pl-3 py-0.5`}>
+                            <p className={`text-xs font-medium ${textColor} leading-relaxed`}>
+                              {!allGood && <span className="text-white/50 mr-1">Focus on {lowest.label}:</span>}
+                              {message}
+                            </p>
+                          </div>
+                        );
+                      })()}
+
                       {/* 3-Score System */}
                       {(selectedRecording.analyses[0].content_score !== undefined ||
                         selectedRecording.analyses[0].communication_score !== undefined ||
                         selectedRecording.analyses[0].delivery_score !== undefined) && (
-                        <div className="grid grid-cols-3 gap-3 mb-4">
-                          {selectedRecording.analyses[0].content_score !== undefined && (
-                            <div className="bg-white/5 rounded-xl p-3 text-center">
-                              <div className="text-xs text-white/50 uppercase mb-1">Content</div>
-                              <div className="text-xl font-bold text-white">{selectedRecording.analyses[0].content_score}</div>
+                        <div className="grid grid-cols-3 gap-2 mb-4">
+                          {[
+                            { label: 'Content', score: selectedRecording.analyses[0].content_score },
+                            { label: 'Comms', score: selectedRecording.analyses[0].communication_score },
+                            { label: 'Delivery', score: selectedRecording.analyses[0].delivery_score },
+                          ].map(({ label, score }) => score !== undefined ? (
+                            <div key={label} className="bg-white/5 rounded-xl p-3 text-center">
+                              <div className="text-[10px] text-white/40 uppercase tracking-wide mb-1">{label}</div>
+                              <div className={`text-xl font-bold ${
+                                score >= 70 ? 'text-green-400' :
+                                score >= 50 ? 'text-yellow-400' :
+                                'text-red-400'
+                              }`}>{score}</div>
+                              <div className="text-[10px] text-white/30">/100</div>
+                              <div className="text-[10px] text-white/40 mt-0.5 leading-tight">
+                                {label === 'Content' && (score >= 70 ? 'Strong' : score >= 50 ? 'Add examples' : 'Needs depth')}
+                                {label === 'Comms' && (score >= 70 ? 'Articulate' : score >= 50 ? 'Clarify ideas' : 'Unclear')}
+                                {label === 'Delivery' && (score >= 70 ? 'Confident' : score >= 50 ? 'Watch pacing' : 'Keep practicing')}
+                              </div>
                             </div>
-                          )}
-                          {selectedRecording.analyses[0].communication_score !== undefined && (
-                            <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-3 text-center">
-                              <div className="text-[10px] text-blue-300/70 uppercase mb-1 whitespace-nowrap">Communication</div>
-                              <div className="text-xl font-bold text-blue-200">{selectedRecording.analyses[0].communication_score}</div>
-                            </div>
-                          )}
-                          {selectedRecording.analyses[0].delivery_score !== undefined && (
-                            <div className="bg-white/5 rounded-xl p-3 text-center">
-                              <div className="text-xs text-white/50 uppercase mb-1">Delivery</div>
-                              <div className="text-xl font-bold text-white">{selectedRecording.analyses[0].delivery_score}</div>
-                            </div>
-                          )}
+                          ) : null)}
                         </div>
                       )}
 
@@ -438,31 +456,42 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                   <div className="grid grid-cols-2 gap-4 pt-2">
                     <div className="bg-white/5 rounded-xl p-3">
                       <div className="text-[10px] text-white/50 uppercase tracking-wider mb-1">Words/Min</div>
-                      <div className="text-2xl font-bold text-white">{selectedRecording.words_per_minute || 0}</div>
+                      <div className={`text-2xl font-bold ${
+                        (selectedRecording.words_per_minute || 0) >= 120 && (selectedRecording.words_per_minute || 0) <= 150 ? 'text-green-400' :
+                        (selectedRecording.words_per_minute || 0) >= 100 && (selectedRecording.words_per_minute || 0) <= 170 ? 'text-yellow-400' :
+                        (selectedRecording.words_per_minute || 0) > 0 ? 'text-red-400' : 'text-white'
+                      }`}>{selectedRecording.words_per_minute || 0}</div>
+                      <div className="text-[10px] text-white/30 mt-0.5">ideal: 120–150</div>
                     </div>
                     <div className="bg-white/5 rounded-xl p-3">
                       <div className="text-[10px] text-white/50 uppercase tracking-wider mb-1">Filler Words</div>
                       <div className="text-2xl font-bold text-yellow-300">{selectedRecording.filler_word_count || 0}</div>
+                      {selectedRecording.duration && selectedRecording.duration > 0 ? (
+                        <div className="text-[10px] text-white/30 mt-0.5">
+                          {((selectedRecording.filler_word_count || 0) / selectedRecording.duration * 60).toFixed(1)}/min
+                        </div>
+                      ) : null}
                     </div>
                   </div>
 
-                  {/* Dominant Emotion */}
+                  {/* Expression coaching */}
                   {selectedRecording.dominant_emotion && (
                     <div className="pt-2 border-t border-white/10">
                       <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center gap-2">
                         <div className="w-1 h-1 rounded-full bg-indigo-400"></div>
-                        <span className="font-semibold">Detected Emotion</span>
+                        <span className="font-semibold">Expression</span>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <div className="inline-block bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-400/30 px-4 py-2 rounded-full">
-                          <span className="text-sm font-medium text-indigo-200 capitalize">{selectedRecording.dominant_emotion}</span>
+                      <div className="flex flex-col gap-1.5">
+                        <div className="bg-white/5 border border-white/10 self-start px-3 py-1 rounded-full">
+                          <span className="text-xs font-medium text-white/80 capitalize">{selectedRecording.dominant_emotion}</span>
                         </div>
-                        {selectedRecording.emotion_confidence && (
-                          <div className="text-[10px] text-white/50">
-                            <span className="font-mono">{Math.round(selectedRecording.emotion_confidence)}%</span>
-                            <span className="ml-1">confidence</span>
-                          </div>
-                        )}
+                        <p className="text-[11px] text-white/50 leading-relaxed">
+                          {selectedRecording.dominant_emotion === 'confident' && 'Good — you projected authority. Keep it up.'}
+                          {selectedRecording.dominant_emotion === 'happy' && 'Great presence — your enthusiasm comes through.'}
+                          {selectedRecording.dominant_emotion === 'neutral' && 'Try adding vocal energy and micro-smiles on key points.'}
+                          {selectedRecording.dominant_emotion === 'nervous' && 'Take a slow breath before answering to settle nerves.'}
+                          {selectedRecording.dominant_emotion === 'tense' && 'Relax your jaw and pause briefly before responding.'}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -598,6 +627,89 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                 </div>
               </div>
             )}
+
+            {/* Collapsible Video Player */}
+            {selectedRecording && videoSrc && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <button
+                  onClick={() => setIsVideoExpanded(prev => !prev)}
+                  className="w-full flex items-center justify-between bg-white/5 hover:bg-white/8 border border-white/10 rounded-2xl px-5 py-3.5 transition-all duration-200 group"
+                >
+                  <div className="flex items-center gap-3">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/50">
+                      <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                      <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                    </svg>
+                    <span className="text-sm font-medium text-white/70 group-hover:text-white/90 transition-colors">
+                      {isVideoExpanded ? 'Hide Recording' : 'Review Recording'}
+                    </span>
+                  </div>
+                  <svg
+                    className={`w-4 h-4 text-white/40 transition-transform duration-200 ${isVideoExpanded ? 'rotate-180' : ''}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+
+                {isVideoExpanded && (
+                  <div className="mt-2 rounded-2xl overflow-hidden border border-white/10 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <video
+                      src={videoSrc}
+                      controls
+                      className="w-full max-h-[360px] bg-black"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Transcript Viewer */}
+            {selectedRecording && selectedRecording.transcript && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <TranscriptViewer
+                  transcript={selectedRecording.transcript}
+                  duration={selectedRecording.duration || 0}
+                  highlightFillerWords={true}
+                />
+              </div>
+            )}
+
+            {/* #32 Practice Again */}
+            {session && session.questions.length > 0 && selectedRecording && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-2">
+                <Link
+                  href="/interview"
+                  onClick={() => {
+                    // Map history page question shape → InterviewContext Question type
+                    const mappedQuestions = session.questions.map(q => ({
+                      id: q.id,
+                      text: q.question_text,
+                      type: 'behavioral' as const,
+                      difficulty: 3,
+                    }));
+                    // Pass config directly — history page has no questions in context,
+                    // so repeatSession must receive them as overrideConfig
+                    repeatSession({
+                      type: session.session_type,
+                      context: session.context,
+                      questions: mappedQuestions,
+                    });
+                  }}
+                  className="w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 hover:border-white/20 transition-all duration-200 rounded-2xl px-6 py-4 group"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/40 group-hover:text-white/70 transition-colors flex-shrink-0">
+                    <polyline points="23 4 23 10 17 10"></polyline>
+                    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                  </svg>
+                  <div className="text-left">
+                    <div className="text-sm font-medium text-white/70 group-hover:text-white/90 transition-colors">Practice Again</div>
+                    <div className="text-[11px] text-white/35 capitalize">{session.session_type.replace(/-/g, ' ')} · Same questions</div>
+                  </div>
+                </Link>
+              </div>
+            )}
+
           </div>
         </div>
       </div>

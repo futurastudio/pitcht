@@ -107,9 +107,9 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                         <div className="text-center space-y-3">
                             <h3 className="text-xl font-bold text-white">Generating Questions...</h3>
                             <div className="space-y-1.5 max-w-md mx-auto">
-                                <p className="text-white/70 text-sm">✓ Analyzing {sessionType === 'job-interview' ? 'role requirements' : sessionType === 'sales-pitch' ? 'target customer' : 'presentation audience'}</p>
+                                <p className="text-white/70 text-sm">✓ Analyzing {sessionType === 'job-interview' ? 'role requirements' : sessionType === 'internship-interview' ? 'internship requirements' : 'presentation content'}</p>
                                 <p className="text-white/70 text-sm">✓ Planning question flow (warmup → deep-dive)</p>
-                                <p className="text-white/70 text-sm">✓ Creating {sessionType === 'job-interview' ? '5-7 behavioral + technical questions' : sessionType === 'sales-pitch' ? 'realistic sales scenarios' : 'presentation prompts + Q&A'}</p>
+                                <p className="text-white/70 text-sm">✓ Creating {sessionType === 'job-interview' ? '5-7 behavioral + technical questions' : sessionType === 'internship-interview' ? '5-7 internship interview questions' : 'presentation prompts + Q&A'}</p>
                             </div>
                         </div>
                     </div>
@@ -151,17 +151,18 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                         <div className="space-y-6">
                             <div>
                                 <label className="block text-sm font-medium text-white/70 mb-2">
-                                    {sessionType === 'job-interview' ? 'Job Description / Role' :
-                                        sessionType === 'sales-pitch' ? 'Product / Service Details' :
+                                    {sessionType === 'job-interview' ? 'Job Description' :
+                                        sessionType === 'internship-interview' ? 'Internship Description' :
                                             'Presentation Topic'}
+                                    <span className="ml-1.5 text-white/35 font-normal">(optional — for tailored questions)</span>
                                 </label>
                                 <textarea
                                     value={context}
                                     onChange={(e) => setContext(e.target.value)}
                                     placeholder={
-                                        sessionType === 'job-interview' ? "Paste the job description or role title here..." :
-                                            sessionType === 'sales-pitch' ? "Describe what you are selling and who the customer is..." :
-                                                "What is the topic of your presentation?"
+                                        sessionType === 'job-interview' ? "Paste the job description or role title for tailored questions — or leave blank to practice with general questions." :
+                                            sessionType === 'internship-interview' ? "Paste the internship posting or company name for domain-specific questions — or leave blank for general practice." :
+                                                "Describe what you're presenting (e.g., marketing strategy, case study, thesis defense) — or leave blank to practice with general prompts."
                                     }
                                     className="w-full h-32 bg-black/20 border border-white/10 rounded-xl p-4 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/20 resize-none"
                                 />
@@ -176,8 +177,7 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                                 </button>
                                 <button
                                     onClick={handleStart}
-                                    disabled={!context.trim()}
-                                    className="px-6 py-2 rounded-full text-sm font-bold text-black bg-white hover:bg-white/90 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="px-6 py-2 rounded-full text-sm font-bold text-black bg-white hover:bg-white/90 transition-colors shadow-lg"
                                 >
                                     Start Simulation
                                 </button>

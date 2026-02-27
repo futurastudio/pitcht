@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate session type
-    const validTypes = ['job-interview', 'presentation', 'sales-pitch'];
+    const validTypes = ['job-interview', 'internship-interview', 'presentation'];
     if (!validTypes.includes(body.sessionType)) {
       return NextResponse.json(
         {

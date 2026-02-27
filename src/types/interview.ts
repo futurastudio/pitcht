@@ -2,7 +2,7 @@
  * Type definitions for interview/presentation sessions
  */
 
-export type SessionType = 'job-interview' | 'presentation' | 'sales-pitch';
+export type SessionType = 'job-interview' | 'internship-interview' | 'presentation';
 
 export type QuestionType = 'technical' | 'behavioral' | 'situational' | 'challenge' | 'opening' | 'closing';
 

@@ -40,17 +40,21 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       };
     }
 
-    // Get user to check trial status
-    const { data: { user } } = await supabase.auth.getUser();
-    const trialEnd = user?.user_metadata?.trial_end;
+    // Check if user has an active trial via the subscriptions table
+    // (Stripe writes status='trialing' via webhook when trial_period_days is set)
+    const { data: trialSubscription } = await supabase
+      .from('subscriptions')
+      .select('current_period_end')
+      .eq('user_id', userId)
+      .eq('status', 'trialing')
+      .single();
 
-    // Check if user is in trial period
-    if (trialEnd && new Date(trialEnd) > new Date()) {
+    if (trialSubscription) {
       return {
         allowed: true,
         isPremium: false,
         isTrialing: true,
-        trialEndsAt: new Date(trialEnd),
+        trialEndsAt: new Date(trialSubscription.current_period_end),
         sessionsThisMonth: 0,
         sessionsRemaining: -1, // Unlimited during trial
       };
@@ -68,7 +72,7 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       .gte('created_at', startOfMonth.toISOString());
 
     const sessionsThisMonth = count || 0;
-    const FREE_TIER_LIMIT = 1;
+    const FREE_TIER_LIMIT = 99; // TESTING ONLY — revert to 1 before launch
 
     if (sessionsThisMonth >= FREE_TIER_LIMIT) {
       return {

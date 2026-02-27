@@ -26,7 +26,6 @@ function SuccessContent() {
     const verifySubscription = async () => {
       if (!sessionId || !user) return;
 
-      console.log('🔍 Verifying subscription...', { sessionId, userId: user.id });
       setIsVerifying(true);
       try {
         // Get the current session token for authorization
@@ -48,10 +47,8 @@ function SuccessContent() {
         });
 
         const data = await response.json();
-        console.log('📊 Verification response:', data);
 
         if (response.ok) {
-          console.log('✅ Subscription verified and synced');
           // Refresh the subscription status in AuthContext
           if (refreshSubscriptionStatus) {
             await refreshSubscriptionStatus();
@@ -224,18 +221,12 @@ function SuccessContent() {
           </p>
           <p className="text-white/60 text-sm">
             Questions? Contact us at{' '}
-            <a href="mailto:support@pitcht.com" className="text-purple-400 hover:text-purple-300">
-              support@pitcht.com
+            <a href="mailto:contact@pitcht.us" className="text-purple-400 hover:text-purple-300">
+              contact@pitcht.us
             </a>
           </p>
         </div>
 
-        {/* Session ID (for debugging) */}
-        {sessionId && (
-          <div className="mt-8 text-center">
-            <p className="text-white/40 text-xs">Session ID: {sessionId}</p>
-          </div>
-        )}
       </div>
 
       <style jsx>{`

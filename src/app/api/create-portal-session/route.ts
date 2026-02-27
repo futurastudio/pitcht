@@ -3,9 +3,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { withCSRFProtection } from '@/middleware/csrfProtection';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-11-17.clover',
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -76,7 +74,21 @@ export async function POST(request: Request) {
 
     if (error || !subscription) {
       return NextResponse.json(
-        { error: 'No active subscription found' },
+        { error: 'No active subscription found. Please subscribe to a plan first.' },
+        { status: 404 }
+      );
+    }
+
+    // Verify the customer exists in Stripe before creating portal session
+    try {
+      await stripe.customers.retrieve(subscription.stripe_customer_id);
+    } catch (stripeError: any) {
+      console.error('Stripe customer not found:', stripeError);
+      return NextResponse.json(
+        {
+          error: 'Your billing account needs to be set up. Please contact support or resubscribe.',
+          details: 'Customer ID mismatch - this usually happens when switching between test/live Stripe accounts.'
+        },
         { status: 404 }
       );
     }

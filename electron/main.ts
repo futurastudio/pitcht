@@ -1,10 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
-import { spawn, ChildProcess } from 'child_process';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import fs from 'fs/promises';
 
 let mainWindow: BrowserWindow | null;
-let emotionServiceProcess: ChildProcess | null = null;
 
 const createWindow = () => {
     mainWindow = new BrowserWindow({
@@ -41,7 +39,7 @@ const createWindow = () => {
                             // Fonts: Allow from self and data URIs
                             "font-src 'self' data:",
                             // API connections
-                            "connect-src 'self' https://*.supabase.co https://api.anthropic.com https://api.openai.com https://api.stripe.com https://cdn.jsdelivr.net http://localhost:5001 wss://*.supabase.co",
+                            "connect-src 'self' https://*.supabase.co https://api.anthropic.com https://api.openai.com https://api.stripe.com https://cdn.jsdelivr.net wss://*.supabase.co",
                             // Media: Allow blob URLs for video recording
                             "media-src 'self' blob: https://*.supabase.co",
                             // Workers: Allow blob URLs
@@ -72,106 +70,7 @@ const createWindow = () => {
     });
 };
 
-// Start Python emotion service
-async function startEmotionService() {
-    try {
-        const isDev = process.env.NODE_ENV === 'development';
-        const basePath = isDev ? process.cwd() : path.join(process.resourcesPath, 'app');
-
-        // Determine Python path based on platform
-        const pythonPath = process.platform === 'win32'
-            ? path.join(basePath, 'python-services', 'venv', 'Scripts', 'python.exe')
-            : path.join(basePath, 'python-services', 'venv', 'bin', 'python3');
-
-        const scriptPath = path.join(basePath, 'python-services', 'emotion_service.py');
-
-        try {
-            if (process.stdout.writable) {
-                console.log('Starting emotion service...');
-                console.log('Python path:', pythonPath);
-                console.log('Script path:', scriptPath);
-            }
-        } catch (e) {
-            // Ignore EPIPE errors
-        }
-
-        emotionServiceProcess = spawn(pythonPath, [scriptPath]);
-
-        emotionServiceProcess.stdout?.on('data', (data) => {
-            try {
-                if (process.stdout.writable) {
-                    console.log(`[Emotion Service]: ${data}`);
-                }
-            } catch (e) {
-                // Ignore EPIPE errors - stdout may be closed
-            }
-        });
-
-        emotionServiceProcess.stderr?.on('data', (data) => {
-            try {
-                if (process.stderr.writable) {
-                    console.error(`[Emotion Service Error]: ${data}`);
-                }
-            } catch (e) {
-                // Ignore EPIPE errors - stderr may be closed
-            }
-        });
-
-        emotionServiceProcess.on('error', (error) => {
-            try {
-                if (process.stderr.writable) {
-                    console.error('[Emotion Service] Failed to start:', error);
-                }
-            } catch (e) {
-                // Ignore EPIPE errors
-            }
-            emotionServiceProcess = null;
-        });
-
-        emotionServiceProcess.on('exit', (code) => {
-            try {
-                if (process.stdout.writable) {
-                    console.log(`[Emotion Service] Exited with code ${code}`);
-                }
-            } catch (e) {
-                // Ignore EPIPE errors
-            }
-            emotionServiceProcess = null;
-        });
-
-        // Wait a bit for service to start
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        try {
-            if (process.stdout.writable) {
-                console.log('Emotion service startup complete');
-            }
-        } catch (e) {
-            // Ignore EPIPE errors
-        }
-    } catch (error) {
-        try {
-            if (process.stderr.writable) {
-                console.error('Failed to start emotion service:', error);
-            }
-        } catch (e) {
-            // Ignore EPIPE errors
-        }
-        // Continue anyway - app should work without emotion analysis
-    }
-}
-
 app.whenReady().then(async () => {
-    // Start emotion service first (non-blocking)
-    startEmotionService().catch((err) => {
-        try {
-            if (process.stderr.writable) {
-                console.warn('Emotion service failed to start, continuing without it:', err);
-            }
-        } catch (e) {
-            // Ignore EPIPE errors
-        }
-    });
-
     createWindow();
 
     app.on('activate', () => {
@@ -187,20 +86,6 @@ app.on('window-all-closed', () => {
     }
 });
 
-// Cleanup: Kill emotion service when app quits
-app.on('before-quit', () => {
-    if (emotionServiceProcess) {
-        try {
-            if (process.stdout.writable) {
-                console.log('Stopping emotion service...');
-            }
-        } catch (e) {
-            // Ignore EPIPE errors
-        }
-        emotionServiceProcess.kill();
-        emotionServiceProcess = null;
-    }
-});
 
 // Helper function to get app data directory
 const getRecordingsDirectory = async () => {

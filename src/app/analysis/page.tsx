@@ -8,12 +8,13 @@ import { useAuth } from '@/context/AuthContext';
 import AccountConversionModal from '@/components/AccountConversionModal';
 import TranscriptViewer from '@/components/TranscriptViewer';
 import { saveAnalysis } from '@/services/sessionManager';
+import { analyzeSpeech } from '@/services/speechAnalyzer';
 import type { GenerateFeedbackResponse } from '@/app/api/generate-feedback/route';
 
 // Sprint 5A: Demo data removed - using real recordings from InterviewContext
 
 export default function Analysis() {
-    const { recordings, clearSession, sessionType, sessionContext } = useInterview();
+    const { recordings, updateRecording, clearSession, repeatSession, sessionType, sessionContext, questions } = useInterview();
     const { user } = useAuth();
     const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
     const [videoSrc, setVideoSrc] = useState<string | null>(null);
@@ -22,6 +23,9 @@ export default function Analysis() {
     const [feedbackError, setFeedbackError] = useState<string | null>(null);
     const [showSignupOverlay, setShowSignupOverlay] = useState(false);
     const [openExamples, setOpenExamples] = useState<Record<number, boolean>>({}); // NEW: Track which examples are open
+    const [isRetryingTranscription, setIsRetryingTranscription] = useState(false);
+    const [retryError, setRetryError] = useState<string | null>(null);
+    const [isVideoExpanded, setIsVideoExpanded] = useState(false);
 
     // Sprint 5A: Use real recordings only
     const hasRecordings = recordings.length > 0;
@@ -39,20 +43,6 @@ export default function Analysis() {
         }
     }, [recordings, selectedRecording]);
 
-    // Debug: Log video metrics when recording is selected
-    useEffect(() => {
-        if (selectedRecording) {
-            console.log('📊 Selected Recording Metrics:', {
-                questionText: selectedRecording.questionText,
-                transcript: selectedRecording.transcript ? '✓ Available' : '✗ Missing',
-                eyeContactPercentage: selectedRecording.eyeContactPercentage || 'Not captured',
-                gazeStability: selectedRecording.gazeStability || 'Not captured',
-                dominantEmotion: selectedRecording.dominantEmotion || 'Not captured',
-                emotionConfidence: selectedRecording.emotionConfidence || 'Not captured',
-                presenceScore: selectedRecording.presenceScore || 'Not captured',
-            });
-        }
-    }, [selectedRecording]);
 
     useEffect(() => {
         const loadVideo = async () => {
@@ -78,6 +68,13 @@ export default function Analysis() {
                 } else {
                     // Web mode: Load video from Supabase Storage using signed URL
                     if (selectedRecording.videoUrl) {
+                        // Ownership check: storage path must start with the current user's ID
+                        // Defense-in-depth — Supabase RLS also enforces this server-side
+                        if (user && !selectedRecording.videoUrl.startsWith(`${user.id}/`)) {
+                            console.error('Recording ownership check failed — refusing to generate signed URL');
+                            return;
+                        }
+
                         // Import supabase client
                         const { supabase } = await import('@/services/supabase');
 
@@ -92,8 +89,6 @@ export default function Analysis() {
                         } else if (data) {
                             setVideoSrc(data.signedUrl);
                         }
-                    } else {
-                        console.warn('No video URL available for recording');
                     }
                 }
             } catch (error) {
@@ -157,7 +152,6 @@ export default function Analysis() {
                             generatedAt: analysis.created_at,
                         });
                         setFeedbackError(null);
-                        console.log('✅ Loaded existing feedback from database');
                         return; // Don't generate new feedback
                     }
                 } catch (error) {
@@ -171,10 +165,15 @@ export default function Analysis() {
             setFeedbackError(null);
 
             try {
+                // Get auth token for the API call
+                const { supabase: supabaseClient } = await import('@/services/supabase');
+                const { data: { session } } = await supabaseClient.auth.getSession();
+
                 const response = await apiFetch('/api/generate-feedback', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
                     },
                     body: JSON.stringify({
                         sessionType: sessionType || 'job-interview',
@@ -208,13 +207,12 @@ export default function Analysis() {
                                 improvements: data.improvements,
                                 nextSteps: data.nextSteps,
                             });
-                            console.log('✅ Analysis saved to database for recording:', selectedRecording.recordingId);
                         } catch (analysisError) {
                             console.error('Failed to save analysis to database:', analysisError);
                             // Don't fail the whole operation - user can still see the feedback
                         }
                     } else {
-                        console.warn('⚠️  No recording ID available - analysis not saved to database');
+                        console.warn('No recording ID — analysis not saved to database');
                     }
                 } else {
                     const errorData = await response.json().catch(() => ({}));
@@ -285,7 +283,6 @@ export default function Analysis() {
                                 improvements: data.improvements,
                                 nextSteps: data.nextSteps,
                             });
-                            console.log('✅ Analysis saved to database for recording:', selectedRecording.recordingId);
                         } catch (analysisError) {
                             console.error('Failed to save analysis to database:', analysisError);
                         }
@@ -309,6 +306,96 @@ export default function Analysis() {
         generateFeedbackForRecording();
     };
 
+    // Retry transcription for a recording that failed to transcribe
+    const retryTranscription = async (recording: Recording) => {
+        if (!recording.recordingId || !recording.videoUrl) {
+            setRetryError('Cannot retry — recording data is missing.');
+            return;
+        }
+
+        setIsRetryingTranscription(true);
+        setRetryError(null);
+
+        try {
+            // Get a fresh signed URL for the video
+            const { supabase } = await import('@/services/supabase');
+            const { data: signedData, error: signedError } = await supabase.storage
+                .from('recordings')
+                .createSignedUrl(recording.videoUrl, 300); // 5 min expiry for download
+
+            if (signedError || !signedData?.signedUrl) {
+                throw new Error('Could not access recording file');
+            }
+
+            // Download the video blob
+            const videoResponse = await fetch(signedData.signedUrl);
+            if (!videoResponse.ok) throw new Error('Failed to download recording');
+            const videoBlob = await videoResponse.blob();
+
+            // Extract audio (send the video blob — transcribe endpoint handles it)
+            const formData = new FormData();
+            formData.append('audio', videoBlob, 'recording.webm');
+            if (recording.questionText) {
+                formData.append('prompt', recording.questionText);
+            }
+
+            const { data: { session } } = await supabase.auth.getSession();
+            const transcribeResponse = await apiFetch('/api/transcribe', {
+                method: 'POST',
+                headers: {
+                    ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
+                },
+                body: formData,
+            });
+
+            if (!transcribeResponse.ok) {
+                const err = await transcribeResponse.json().catch(() => ({}));
+                throw new Error(err.error || 'Transcription failed');
+            }
+
+            const result = await transcribeResponse.json();
+            const { transcript, duration } = result;
+
+            if (!transcript) throw new Error('No transcript returned');
+
+            // Calculate speech metrics
+            const speechMetrics = analyzeSpeech(transcript, duration);
+
+            // Update database
+            const updateData = {
+                transcript,
+                duration: duration ? Math.round(duration) : undefined,
+                words_per_minute: speechMetrics.wordsPerMinute !== undefined ? Math.max(0, Math.min(400, Math.round(speechMetrics.wordsPerMinute))) : undefined,
+                filler_word_count: speechMetrics.fillerWordCount !== undefined ? Math.max(0, Math.round(speechMetrics.fillerWordCount)) : undefined,
+                clarity_score: speechMetrics.clarityScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.clarityScore))) : undefined,
+                pacing_score: speechMetrics.pacingScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.pacingScore))) : undefined,
+            };
+
+            const { error: dbError } = await supabase
+                .from('recordings')
+                .update(updateData)
+                .eq('id', recording.recordingId);
+
+            if (dbError) throw new Error('Failed to save transcript to database');
+
+            // Update context state
+            updateRecording(recording.recordingId, {
+                transcript,
+                duration,
+                ...speechMetrics,
+            });
+
+            // Update selected recording so the UI refreshes
+            setSelectedRecording(prev => prev ? { ...prev, transcript, duration, ...speechMetrics } : prev);
+
+        } catch (error) {
+            console.error('Transcription retry failed:', error);
+            setRetryError(error instanceof Error ? error.message : 'Retry failed. Please try again.');
+        } finally {
+            setIsRetryingTranscription(false);
+        }
+    };
+
     return (
         <main className="min-h-screen text-white p-8 pb-24 relative">
             {/* Background Gradient Overlay */}
@@ -318,7 +405,7 @@ export default function Analysis() {
             <div className={`max-w-7xl mx-auto relative z-10 ${showSignupOverlay ? 'filter blur-md pointer-events-none select-none' : ''}`}>
                 <header className="flex justify-between items-center mb-8">
                     <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
-                        Session Analysis
+                        Session Review
                     </h1>
                     <div className="flex gap-4">
                         <Link
@@ -355,7 +442,7 @@ export default function Analysis() {
                                             <span className="text-[10px] text-white/50 font-semibold tracking-wider uppercase">Q{idx + 1}</span>
                                             {rec.duration ? (
                                                 <span className="text-[10px] text-white/60 font-mono bg-white/10 px-1.5 py-0.5 rounded">
-                                                    {Math.floor(rec.duration / 60)}:{(rec.duration % 60).toString().padStart(2, '0')}
+                                                    {Math.floor(rec.duration / 60)}:{Math.floor(rec.duration % 60).toString().padStart(2, '0')}
                                                 </span>
                                             ) : (
                                                 <span className="text-[10px] text-white/40 italic">Skipped</span>
@@ -385,30 +472,12 @@ export default function Analysis() {
 
                     {/* Right Area: Analysis View (70%) */}
                     <div className="flex-1 space-y-6">
-                        {/* Video Player */}
-                        <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-1 aspect-video flex items-center justify-center bg-black/40 overflow-hidden relative">
-                            {videoSrc ? (
-                                <video
-                                    src={videoSrc}
-                                    controls
-                                    autoPlay
-                                    className="w-full h-full object-contain rounded-2xl"
-                                />
-                            ) : (
-                                <div className="text-center p-8">
-                                    <p className="text-white/50 mb-2">Select a question to view recording</p>
-                                </div>
-                            )}
-                        </div>
 
-                        {/* Transcript Viewer */}
-                        {selectedRecording && selectedRecording.transcript && (
-                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                <TranscriptViewer
-                                    transcript={selectedRecording.transcript}
-                                    duration={selectedRecording.duration}
-                                    highlightFillerWords={true}
-                                />
+                        {/* Question Being Reviewed */}
+                        {selectedRecording && (
+                            <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-3">
+                                <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1.5">Question</div>
+                                <p className="text-white/90 font-medium text-sm leading-relaxed">{selectedRecording.questionText}</p>
                             </div>
                         )}
 
@@ -428,27 +497,61 @@ export default function Analysis() {
                                         </div>
                                     ) : feedback ? (
                                         <div className="space-y-4">
+                                            {/* #31 Biggest Improvement Callout */}
+                                            {feedback.contentScore !== undefined &&
+                                             feedback.communicationScore !== undefined &&
+                                             feedback.deliveryScore !== undefined && (() => {
+                                                const scores = [
+                                                    { label: 'Content', score: feedback.contentScore! },
+                                                    { label: 'Comms', score: feedback.communicationScore! },
+                                                    { label: 'Delivery', score: feedback.deliveryScore! },
+                                                ];
+                                                const lowest = scores.reduce((a, b) => a.score <= b.score ? a : b);
+                                                const allGood = scores.every(s => s.score >= 70);
+                                                const borderColor = allGood ? 'border-green-400/50' : lowest.score < 50 ? 'border-red-400/60' : 'border-yellow-400/60';
+                                                const textColor = allGood ? 'text-green-300' : lowest.score < 50 ? 'text-red-300' : 'text-yellow-300';
+                                                const message = allGood
+                                                    ? `Strong session — your lowest was ${lowest.label} (${lowest.score}). Keep going.`
+                                                    : lowest.score < 50
+                                                        ? (lowest.label === 'Content' ? 'Add a concrete example to anchor your answer.'
+                                                            : lowest.label === 'Comms' ? 'Structure before you speak — try the STAR method.'
+                                                            : 'Keep practicing — confidence builds with repetition.')
+                                                        : (lowest.label === 'Content' ? 'Sharpen with a specific metric or outcome.'
+                                                            : lowest.label === 'Comms' ? 'Tighten transitions between your ideas.'
+                                                            : 'Reduce filler words and your presence will jump.');
+                                                return (
+                                                    <div className={`border-l-2 ${borderColor} pl-3 py-0.5`}>
+                                                        <p className={`text-xs font-medium ${textColor} leading-relaxed`}>
+                                                            {!allGood && <span className="text-white/50 mr-1">Focus on {lowest.label}:</span>}
+                                                            {message}
+                                                        </p>
+                                                    </div>
+                                                );
+                                            })()}
+
                                             {/* Score Breakdown */}
                                             {(feedback.contentScore !== undefined || feedback.communicationScore !== undefined || feedback.deliveryScore !== undefined) && (
-                                                <div className="grid grid-cols-3 gap-3 mb-4">
-                                                    {feedback.contentScore !== undefined && (
-                                                        <div className="bg-white/5 rounded-xl p-3 text-center">
-                                                            <div className="text-xs text-white/50 uppercase mb-1">Content</div>
-                                                            <div className="text-xl font-bold text-white">{feedback.contentScore}</div>
+                                                <div className="grid grid-cols-3 gap-2 mb-4">
+                                                    {[
+                                                        { label: 'Content', score: feedback.contentScore },
+                                                        { label: 'Comms', score: feedback.communicationScore },
+                                                        { label: 'Delivery', score: feedback.deliveryScore },
+                                                    ].map(({ label, score }) => score !== undefined ? (
+                                                        <div key={label} className="bg-white/5 rounded-xl p-3 text-center">
+                                                            <div className="text-[10px] text-white/40 uppercase tracking-wide mb-1">{label}</div>
+                                                            <div className={`text-xl font-bold ${
+                                                                score >= 70 ? 'text-green-400' :
+                                                                score >= 50 ? 'text-yellow-400' :
+                                                                'text-red-400'
+                                                            }`}>{score}</div>
+                                                            <div className="text-[10px] text-white/30">/100</div>
+                                                            <div className="text-[10px] text-white/40 mt-0.5 leading-tight">
+                                                                {label === 'Content' && (score >= 70 ? 'Strong' : score >= 50 ? 'Add examples' : 'Needs depth')}
+                                                                {label === 'Comms' && (score >= 70 ? 'Articulate' : score >= 50 ? 'Clarify ideas' : 'Unclear')}
+                                                                {label === 'Delivery' && (score >= 70 ? 'Confident' : score >= 50 ? 'Watch pacing' : 'Keep practicing')}
+                                                            </div>
                                                         </div>
-                                                    )}
-                                                    {feedback.communicationScore !== undefined && (
-                                                        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-center">
-                                                            <div className="text-[11px] text-blue-300/70 uppercase mb-1.5 whitespace-nowrap">Communication</div>
-                                                            <div className="text-xl font-bold text-blue-200">{feedback.communicationScore}</div>
-                                                        </div>
-                                                    )}
-                                                    {feedback.deliveryScore !== undefined && (
-                                                        <div className="bg-white/5 rounded-xl p-3 text-center">
-                                                            <div className="text-xs text-white/50 uppercase mb-1">Delivery</div>
-                                                            <div className="text-xl font-bold text-white">{feedback.deliveryScore}</div>
-                                                        </div>
-                                                    )}
+                                                    ) : null)}
                                                 </div>
                                             )}
 
@@ -601,53 +704,47 @@ export default function Analysis() {
 
                                                     {hasVideoMetrics ? (
                                                         <>
-                                                            {/* Eye Contact Score */}
-                                                            {eyeContact > 0 && (
-                                                                <div>
-                                                                    <div className="flex justify-between text-xs mb-1 text-white/60">
-                                                                        <span>Eye Contact</span>
-                                                                        <span>{eyeContact}%</span>
-                                                                    </div>
-                                                                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                                                                        <div
-                                                                            className="h-full bg-gradient-to-r from-purple-400 to-violet-300 transition-all duration-1000"
-                                                                            style={{ width: `${eyeContact}%` }}
-                                                                        />
-                                                                    </div>
+                                                            {/* Eye Contact Score — always shown when video metrics exist, even at 0% */}
+                                                            <div>
+                                                                <div className="flex justify-between text-xs mb-1 text-white/60">
+                                                                    <span>Eye Contact</span>
+                                                                    <span>{eyeContact}%</span>
                                                                 </div>
-                                                            )}
+                                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                                    <div
+                                                                        className="h-full bg-gradient-to-r from-purple-400 to-violet-300 transition-all duration-1000"
+                                                                        style={{ width: `${eyeContact}%` }}
+                                                                    />
+                                                                </div>
+                                                            </div>
 
-                                                            {/* Gaze Stability */}
-                                                            {gazeStability > 0 && (
-                                                                <div>
-                                                                    <div className="flex justify-between text-xs mb-1 text-white/60">
-                                                                        <span>Gaze Stability</span>
-                                                                        <span>{gazeStability}%</span>
-                                                                    </div>
-                                                                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                                                                        <div
-                                                                            className="h-full bg-gradient-to-r from-pink-400 to-rose-300 transition-all duration-1000"
-                                                                            style={{ width: `${gazeStability}%` }}
-                                                                        />
-                                                                    </div>
+                                                            {/* Gaze Stability — always shown when video metrics exist, even at 0% */}
+                                                            <div>
+                                                                <div className="flex justify-between text-xs mb-1 text-white/60">
+                                                                    <span>Gaze Stability</span>
+                                                                    <span>{gazeStability}%</span>
                                                                 </div>
-                                                            )}
+                                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                                    <div
+                                                                        className="h-full bg-gradient-to-r from-pink-400 to-rose-300 transition-all duration-1000"
+                                                                        style={{ width: `${gazeStability}%` }}
+                                                                    />
+                                                                </div>
+                                                            </div>
 
-                                                            {/* Presence Score */}
-                                                            {presenceScore > 0 && (
-                                                                <div>
-                                                                    <div className="flex justify-between text-xs mb-1 text-white/60">
-                                                                        <span>Overall Presence</span>
-                                                                        <span>{presenceScore}%</span>
-                                                                    </div>
-                                                                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                                                                        <div
-                                                                            className="h-full bg-gradient-to-r from-orange-400 to-red-400 transition-all duration-1000"
-                                                                            style={{ width: `${presenceScore}%` }}
-                                                                        />
-                                                                    </div>
+                                                            {/* Presence Score — always shown when video metrics exist, even at 0% */}
+                                                            <div>
+                                                                <div className="flex justify-between text-xs mb-1 text-white/60">
+                                                                    <span>Overall Presence</span>
+                                                                    <span>{presenceScore}%</span>
                                                                 </div>
-                                                            )}
+                                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                                    <div
+                                                                        className="h-full bg-gradient-to-r from-orange-400 to-red-400 transition-all duration-1000"
+                                                                        style={{ width: `${presenceScore}%` }}
+                                                                    />
+                                                                </div>
+                                                            </div>
                                                         </>
                                                     ) : (
                                                         <div className="bg-white/5 rounded-xl p-3 text-center">
@@ -655,7 +752,7 @@ export default function Analysis() {
                                                                 Video metrics not available
                                                             </p>
                                                             <p className="text-white/30 text-[10px] mt-1">
-                                                                Ensure the emotion service is running
+                                                                Camera tracking was not active during this recording
                                                             </p>
                                                         </div>
                                                     )}
@@ -665,31 +762,38 @@ export default function Analysis() {
                                                 <div className="grid grid-cols-2 gap-4 pt-2">
                                                     <div className="bg-white/5 rounded-xl p-3">
                                                         <div className="text-[10px] text-white/50 uppercase tracking-wider mb-1">Words/Min</div>
-                                                        <div className="text-2xl font-bold text-white">{wpm}</div>
+                                                        <div className={`text-2xl font-bold ${wpm >= 120 && wpm <= 150 ? 'text-green-400' : wpm >= 100 && wpm <= 170 ? 'text-yellow-400' : wpm > 0 ? 'text-red-400' : 'text-white'}`}>{wpm}</div>
+                                                        <div className="text-[10px] text-white/30 mt-0.5">ideal: 120–150</div>
                                                     </div>
                                                     <div className="bg-white/5 rounded-xl p-3">
                                                         <div className="text-[10px] text-white/50 uppercase tracking-wider mb-1">Filler Words</div>
                                                         <div className="text-2xl font-bold text-yellow-300">{fillerCount}</div>
+                                                        {selectedRecording.duration && selectedRecording.duration > 0 ? (
+                                                            <div className="text-[10px] text-white/30 mt-0.5">
+                                                                {(fillerCount / selectedRecording.duration * 60).toFixed(1)}/min
+                                                            </div>
+                                                        ) : null}
                                                     </div>
                                                 </div>
 
-                                                {/* Sprint 5A: Dominant Emotion Badge */}
+                                                {/* Expression coaching */}
                                                 {dominantEmotion && (
                                                     <div className="pt-2 border-t border-white/10">
                                                         <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center gap-2">
                                                             <div className="w-1 h-1 rounded-full bg-indigo-400"></div>
-                                                            <span className="font-semibold">Detected Emotion</span>
+                                                            <span className="font-semibold">Expression</span>
                                                         </div>
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="inline-block bg-gradient-to-r from-indigo-500/20 to-purple-500/20 border border-indigo-400/30 px-4 py-2 rounded-full">
-                                                                <span className="text-sm font-medium text-indigo-200 capitalize">{dominantEmotion}</span>
+                                                        <div className="flex flex-col gap-1.5">
+                                                            <div className="bg-white/5 border border-white/10 self-start px-3 py-1 rounded-full">
+                                                                <span className="text-xs font-medium text-white/80 capitalize">{dominantEmotion}</span>
                                                             </div>
-                                                            {emotionConfidence > 0 && (
-                                                                <div className="text-[10px] text-white/50">
-                                                                    <span className="font-mono">{Math.round(emotionConfidence)}%</span>
-                                                                    <span className="ml-1">confidence</span>
-                                                                </div>
-                                                            )}
+                                                            <p className="text-[11px] text-white/50 leading-relaxed">
+                                                                {dominantEmotion === 'confident' && 'Good — you projected authority. Keep it up.'}
+                                                                {dominantEmotion === 'happy' && 'Great presence — your enthusiasm comes through.'}
+                                                                {dominantEmotion === 'neutral' && 'Try adding vocal energy and micro-smiles on key points.'}
+                                                                {dominantEmotion === 'nervous' && 'Take a slow breath before answering to settle nerves.'}
+                                                                {dominantEmotion === 'tense' && 'Relax your jaw and pause briefly before responding.'}
+                                                            </p>
                                                         </div>
                                                     </div>
                                                 )}
@@ -826,6 +930,114 @@ export default function Analysis() {
                                         </div>
                                     )}
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Collapsible Video Player */}
+                        {selectedRecording && videoSrc && (
+                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <button
+                                    onClick={() => setIsVideoExpanded(prev => !prev)}
+                                    className="w-full flex items-center justify-between bg-white/5 hover:bg-white/8 border border-white/10 rounded-2xl px-5 py-3.5 transition-all duration-200 group"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/50">
+                                            <polygon points="23 7 16 12 23 17 23 7"></polygon>
+                                            <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                                        </svg>
+                                        <span className="text-sm font-medium text-white/70 group-hover:text-white/90 transition-colors">
+                                            {isVideoExpanded ? 'Hide Recording' : 'Review Recording'}
+                                        </span>
+                                    </div>
+                                    <svg
+                                        className={`w-4 h-4 text-white/40 transition-transform duration-200 ${isVideoExpanded ? 'rotate-180' : ''}`}
+                                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </button>
+
+                                {isVideoExpanded && (
+                                    <div className="mt-2 rounded-2xl overflow-hidden border border-white/10 animate-in fade-in slide-in-from-top-2 duration-200">
+                                        <video
+                                            src={videoSrc}
+                                            controls
+                                            className="w-full max-h-[360px] bg-black"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Transcript Viewer */}
+                        {selectedRecording && selectedRecording.transcript ? (
+                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                <TranscriptViewer
+                                    transcript={selectedRecording.transcript}
+                                    duration={selectedRecording.duration}
+                                    highlightFillerWords={true}
+                                />
+                            </div>
+                        ) : selectedRecording && !selectedRecording.transcript && selectedRecording.videoUrl ? (
+                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
+                                <div className="flex items-start gap-4">
+                                    <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-300">
+                                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                                            <line x1="12" y1="9" x2="12" y2="13"></line>
+                                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                                        </svg>
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="text-white/80 font-medium text-sm mb-1">Transcript not available</p>
+                                        <p className="text-white/50 text-xs mb-4">
+                                            The speech-to-text processing for this recording didn&apos;t complete. You can retry now — it only takes a few seconds.
+                                        </p>
+                                        {retryError && (
+                                            <p className="text-red-300 text-xs mb-3">{retryError}</p>
+                                        )}
+                                        <button
+                                            onClick={() => retryTranscription(selectedRecording)}
+                                            disabled={isRetryingTranscription}
+                                            className="flex items-center gap-2 bg-white/10 hover:bg-white/20 active:bg-white/30 border border-white/20 transition-all duration-200 px-4 py-2 rounded-full text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {isRetryingTranscription ? (
+                                                <>
+                                                    <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                                    <span>Processing...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                                        <polyline points="23 4 23 10 17 10"></polyline>
+                                                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                                                    </svg>
+                                                    <span>Retry Transcription</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : null}
+
+                        {/* #32 Practice Again */}
+                        {sessionType && questions.length > 0 && selectedRecording && (
+                            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-2">
+                                <Link
+                                    href="/interview"
+                                    onClick={() => repeatSession()}
+                                    className="w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 hover:border-white/20 transition-all duration-200 rounded-2xl px-6 py-4 group"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/40 group-hover:text-white/70 transition-colors flex-shrink-0">
+                                        <polyline points="23 4 23 10 17 10"></polyline>
+                                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                                    </svg>
+                                    <div className="text-left">
+                                        <div className="text-sm font-medium text-white/70 group-hover:text-white/90 transition-colors">Practice Again</div>
+                                        <div className="text-[11px] text-white/35 capitalize">{sessionType.replace(/-/g, ' ')} · Same questions</div>
+                                    </div>
+                                </Link>
                             </div>
                         )}
 

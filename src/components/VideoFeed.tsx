@@ -14,6 +14,7 @@ export default function VideoFeed() {
     const [tracker] = useState(() => FaceTracker.getInstance());
     const [isTrackerReady, setIsTrackerReady] = useState(false);
     const [isCurrentlyRecording, setIsCurrentlyRecording] = useState(false);
+    const [faceTrackingFailed, setFaceTrackingFailed] = useState(false);
 
     // Initialize MediaPipe face tracker when video is ready
     useEffect(() => {
@@ -21,11 +22,10 @@ export default function VideoFeed() {
             tracker.initialize(videoRef.current)
                 .then(() => {
                     setIsTrackerReady(true);
-                    console.log('Face tracker initialized successfully');
                 })
                 .catch((err: Error) => {
                     console.warn('Face tracker failed to initialize (continuing without eye tracking):', err);
-                    // Don't set error - app continues without eye tracking
+                    setFaceTrackingFailed(true);
                 });
         }
     }, [tracker, isTrackerReady]);
@@ -39,7 +39,6 @@ export default function VideoFeed() {
             // Start tracking when recording begins
             try {
                 tracker.startTracking();
-                console.log('Eye contact tracking started');
             } catch (err) {
                 console.warn('Failed to start eye tracking:', err);
             }
@@ -64,7 +63,6 @@ export default function VideoFeed() {
                 }
                 // Defer state update to avoid updating during render
                 setTimeout(() => setIsCurrentlyRecording(true), 0);
-                console.log('Recording started (video + audio)');
             }
         };
 
@@ -81,7 +79,6 @@ export default function VideoFeed() {
                         if (videoBlob !== null && audioBlob !== null) {
                             // Defer state update to avoid updating during render
                             setTimeout(() => setIsCurrentlyRecording(false), 0);
-                            console.log(`✅ Recording stopped - Video: ${(videoBlob.size / (1024 * 1024)).toFixed(2)}MB, Audio: ${(audioBlob.size / (1024 * 1024)).toFixed(2)}MB`);
                             resolve({ blob: videoBlob, audioBlob, eyeTracking });
                         }
                     };
@@ -96,20 +93,14 @@ export default function VideoFeed() {
                         // Get eye tracking metrics BEFORE stopping tracker
                         try {
                             const metrics = tracker.getMetrics();
-                            console.log('🔍 Raw metrics from tracker:', metrics);
 
                             if (metrics && metrics.totalFrames > 0) {
                                 eyeTracking = metrics;
-                                console.log('✅ Eye tracking metrics:', eyeTracking);
-                            } else {
-                                console.warn('⚠️ No frames captured! Tracker was running but no face detected.');
-                                console.warn('  totalFrames:', metrics?.totalFrames || 0);
-                                console.warn('  Possible causes: No face visible, MediaPipe not loaded, camera blocked');
                             }
                             // Now stop the tracker to clean up
                             tracker.stopTracking();
                         } catch (err) {
-                            console.warn('❌ Failed to get eye tracking metrics:', err);
+                            console.warn('Failed to get eye tracking metrics:', err);
                         }
 
                         checkBothStopped();
@@ -147,8 +138,11 @@ export default function VideoFeed() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 },
+                        // 720p is sufficient for face tracking and recording quality.
+                        // 1080p was causing visible camera stutter due to MediaPipe
+                        // processing a full 1920x1080 frame on every animation frame.
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
                         facingMode: 'user',
                     },
                     audio: true,
@@ -196,7 +190,6 @@ export default function VideoFeed() {
                     }
                 };
                 audioRecorderRef.current = audioRecorder;
-                console.log('✅ Dual recording setup: video/webm (storage) + audio/webm (transcription)');
 
             } catch (err) {
                 console.error('Error accessing camera:', err);
@@ -232,6 +225,18 @@ export default function VideoFeed() {
                 className="w-full h-full object-cover transform scale-x-[-1]"
             />
             <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/30 pointer-events-none" />
+            {faceTrackingFailed && (
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-yellow-500/20 border border-yellow-500/40 backdrop-blur-md px-4 py-2 rounded-full pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-300 flex-shrink-0">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    <span className="text-yellow-200 text-xs font-medium">
+                        Eye contact tracking unavailable — check camera permissions. Eye contact metrics won&apos;t be recorded.
+                    </span>
+                </div>
+            )}
         </div>
     );
 }

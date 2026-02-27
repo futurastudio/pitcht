@@ -15,6 +15,7 @@ import { analyzeSpeech } from '@/services/speechAnalyzer';
 import type { SessionType } from '@/types/interview';
 import { withCSRFProtection } from '@/middleware/csrfProtection';
 import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
+import { createClient } from '@supabase/supabase-js';
 
 export interface GenerateFeedbackRequest {
   sessionType: SessionType;
@@ -68,6 +69,24 @@ export async function POST(request: NextRequest) {
     // CSRF Protection
     const csrfError = withCSRFProtection(request);
     if (csrfError) return csrfError;
+
+    // Auth check — require a valid Supabase session token
+    const authHeader = request.headers.get('Authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     // Rate Limiting (20 requests per hour)
     const userKey = getUserIdentifier(request);
