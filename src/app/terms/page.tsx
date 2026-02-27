@@ -196,7 +196,7 @@ export default function TermsOfServicePage() {
             <h3 className="text-xl font-semibold text-purple-400 mb-3">7.5 Refunds</h3>
             <p>
               Refunds are generally not provided except in cases of technical failure preventing service use
-              or as required by applicable law. Contact us at support@pitcht.com to request a refund.
+              or as required by applicable law. Contact us at contact@pitcht.us to request a refund.
             </p>
           </section>
 
@@ -321,7 +321,7 @@ export default function TermsOfServicePage() {
               For any dispute arising out of or relating to these Terms or the Service:
             </p>
             <ul className="list-disc list-inside space-y-2 ml-4 mb-4">
-              <li><strong>Informal Resolution:</strong> Contact us first at support@pitcht.com</li>
+              <li><strong>Informal Resolution:</strong> Contact us first at contact@pitcht.us</li>
               <li><strong>Mediation:</strong> If unresolved, we agree to pursue good-faith mediation</li>
               <li><strong>Arbitration:</strong> Disputes will be resolved through binding arbitration</li>
             </ul>
@@ -397,8 +397,8 @@ export default function TermsOfServicePage() {
                 </a>
               </p>
               <p><strong>Support:</strong>{' '}
-                <a href="mailto:support@pitcht.com" className="text-purple-400 hover:text-purple-300">
-                  support@pitcht.com
+                <a href="mailto:contact@pitcht.us" className="text-purple-400 hover:text-purple-300">
+                  contact@pitcht.us
                 </a>
               </p>
               <p><strong>Company:</strong> Pitcht, Inc.</p>

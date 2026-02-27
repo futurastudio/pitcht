@@ -3,9 +3,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { withCSRFProtection } from '@/middleware/csrfProtection';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-11-17.clover',
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,6 +22,33 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Missing required fields: priceId or userId' },
         { status: 400 }
+      );
+    }
+
+    // SECURITY: Verify the authenticated user matches the userId in the request
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: 'Missing authorization header' },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !authUser) {
+      return NextResponse.json(
+        { error: 'Invalid or expired authentication token' },
+        { status: 401 }
+      );
+    }
+
+    // CRITICAL: Verify userId matches authenticated user
+    if (authUser.id !== userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized - user ID mismatch' },
+        { status: 403 }
       );
     }
 

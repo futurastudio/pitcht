@@ -41,6 +41,7 @@ export default function HistoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<SessionType>('all');
   const [refreshCount, setRefreshCount] = useState(0);
+  const [processingTimedOut, setProcessingTimedOut] = useState(false);
 
   // Redirect to home if not logged in
   useEffect(() => {
@@ -78,21 +79,24 @@ export default function HistoryPage() {
         const data = await getUserProgressData(user.id);
         setProgressData(data);
 
-        // Check if any recordings have incomplete data (background transcription still processing)
-        const hasIncompleteData = data.some(recording =>
-          recording.filler_word_count === null ||
-          recording.clarity_score === null ||
-          recording.pacing_score === null
+        // Check only the most recent recording for incomplete data.
+        // Checking all recordings would trigger the poll indefinitely for users
+        // with older sessions that were recorded before transcription was reliable.
+        const mostRecent = data.length > 0 ? data[data.length - 1] : null;
+        const hasIncompleteData = mostRecent !== null && (
+          mostRecent.filler_word_count === null ||
+          mostRecent.clarity_score === null ||
+          mostRecent.pacing_score === null
         );
 
         // Auto-refresh every 3 seconds if incomplete data exists (max 10 retries = 30 seconds)
         if (hasIncompleteData && refreshCount < 10) {
-          console.log(`📊 Incomplete recording data detected, auto-refreshing in 3s (attempt ${refreshCount + 1}/10)`);
           setTimeout(() => {
             setRefreshCount(prev => prev + 1);
           }, 3000);
-        } else if (refreshCount >= 10) {
-          console.log('⏱️ Max refresh attempts reached, stopping auto-refresh');
+        } else if (hasIncompleteData && refreshCount >= 10) {
+          // Max retries hit — surface a visible notice so users know why metrics are missing
+          setProcessingTimedOut(true);
         }
       } catch (error) {
         console.error('Error fetching progress data:', error);
@@ -213,6 +217,30 @@ export default function HistoryPage() {
 
         {/* Progress Tracking */}
         <ProgressMetrics recordings={progressData} />
+
+        {/* Processing timeout notice */}
+        {processingTimedOut && (
+          <div className="mb-6 flex items-start gap-3 bg-white/5 border border-white/10 rounded-2xl px-5 py-4">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/50 mt-0.5 flex-shrink-0">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <div>
+              <p className="text-white/70 text-sm font-medium">Some metrics are still processing</p>
+              <p className="text-white/40 text-xs mt-0.5">
+                Speech analysis for recent recordings may take a moment.{' '}
+                <button
+                  onClick={() => { setRefreshCount(0); setProcessingTimedOut(false); }}
+                  className="underline underline-offset-2 hover:text-white/60 transition-colors"
+                >
+                  Refresh
+                </button>{' '}
+                to check again.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-8">

@@ -5,7 +5,9 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/services/supabase';
 import Header from '@/components/Header';
+import { toast } from 'sonner';
 
 export default function PricingPage() {
   const router = useRouter();
@@ -22,11 +24,22 @@ export default function PricingPage() {
     setIsLoading(priceId);
 
     try {
+      // Get the current session token for authorization
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        console.error('No active session:', sessionError);
+        toast.error('Please sign in again to subscribe.');
+        setIsLoading(null);
+        return;
+      }
+
       // Create Stripe checkout session
       const response = await apiFetch('/api/create-checkout-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           priceId,
@@ -38,7 +51,7 @@ export default function PricingPage() {
 
       if (data.error) {
         console.error('Checkout error:', data.error);
-        alert(data.error);
+        toast.error(data.error);
         setIsLoading(null);
         return;
       }
@@ -51,7 +64,7 @@ export default function PricingPage() {
       }
     } catch (error) {
       console.error('Error creating checkout session:', error);
-      alert('Failed to start checkout. Please try again.');
+      toast.error('Failed to start checkout. Please try again.');
       setIsLoading(null);
     }
   };
@@ -145,9 +158,9 @@ export default function PricingPage() {
             </div>
 
             <div className="text-center mb-6">
-              <h3 className="text-2xl font-bold text-white mb-2">Premium</h3>
+              <h3 className="text-2xl font-bold text-white mb-2">Pro</h3>
               <div className="text-5xl font-bold text-white mb-4">
-                $27<span className="text-xl text-white/50">/month</span>
+                $14.99<span className="text-xl text-white/50">/month</span>
               </div>
               <p className="text-white/60 text-sm">Unlimited practice & insights</p>
             </div>
@@ -199,7 +212,7 @@ export default function PricingPage() {
                 onClick={() =>
                   handleSubscribe(
                     process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY!,
-                    'Premium Monthly'
+                    'Pro Monthly'
                   )
                 }
                 disabled={isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY}
@@ -207,9 +220,11 @@ export default function PricingPage() {
               >
                 {isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY
                   ? 'Loading...'
+                  : !user
+                  ? 'Start 7-Day Free Trial'
                   : subscriptionStatus.isTrialing
                   ? 'Subscribe Now'
-                  : 'Start 7-Day Free Trial'}
+                  : 'Get Pro'}
               </button>
             )}
           </div>
@@ -223,27 +238,27 @@ export default function PricingPage() {
                 <div className="flex items-center gap-3 mb-2">
                   <h3 className="text-2xl font-bold text-white">Annual Plan</h3>
                   <span className="bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-sm font-semibold">
-                    Save 20%
+                    2 Months Free
                   </span>
                 </div>
                 <p className="text-white/60 mb-2">
-                  Get Premium for <span className="text-white font-bold">$259/year</span>
+                  Get Pro for <span className="text-white font-bold">$149/year</span>
                 </p>
                 <p className="text-white/50 text-sm">
-                  That's only <span className="text-green-400 font-semibold">$21.60/month</span> — save $65/year!
+                  That's only <span className="text-green-400 font-semibold">$12.42/month</span> — 2 months free!
                 </p>
               </div>
               <div className="flex-shrink-0">
-                {subscriptionStatus.isPremium ? (
+                {subscriptionStatus.isPremium && !subscriptionStatus.isTrialing ? (
                   <div className="px-8 py-3 bg-white/5 border border-white/10 rounded-full text-white/50">
-                    Contact Support to Switch
+                    Current Plan ✓
                   </div>
                 ) : (
                   <button
                     onClick={() =>
                       handleSubscribe(
                         process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL!,
-                        'Premium Annual'
+                        'Pro Annual'
                       )
                     }
                     disabled={isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL}
@@ -251,9 +266,7 @@ export default function PricingPage() {
                   >
                     {isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL
                       ? 'Loading...'
-                      : subscriptionStatus.isTrialing
-                      ? 'Subscribe Annually'
-                      : 'Start Annual Free Trial'}
+                      : 'Subscribe Annually'}
                   </button>
                 )}
               </div>

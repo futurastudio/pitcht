@@ -3,9 +3,7 @@ import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 import { withCSRFProtection } from '@/middleware/csrfProtection';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-11-17.clover',
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 // Create Supabase client with service role key for server-side operations
 const supabaseAdmin = createClient(
@@ -35,6 +33,33 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Missing required fields' },
         { status: 400 }
+      );
+    }
+
+    // SECURITY: Verify the authenticated user matches the userId in the request
+    const authHeader = request.headers.get('authorization');
+    if (!authHeader) {
+      return NextResponse.json(
+        { error: 'Missing authorization header' },
+        { status: 401 }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.getUser(token);
+
+    if (authError || !authUser) {
+      return NextResponse.json(
+        { error: 'Invalid or expired authentication token' },
+        { status: 401 }
+      );
+    }
+
+    // CRITICAL: Verify userId matches authenticated user
+    if (authUser.id !== userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized - user ID mismatch' },
+        { status: 403 }
       );
     }
 
@@ -77,6 +102,27 @@ export async function POST(request: Request) {
     if (subscription.status === 'active' || subscription.status === 'trialing') {
       const priceId = subscription.items.data[0].price.id;
       const customerId = session.customer as string;
+
+      // SECURITY: Verify customer exists in current Stripe environment before saving
+      try {
+        const customer = await stripe.customers.retrieve(customerId);
+        if (customer.deleted) {
+          return NextResponse.json(
+            { error: 'Customer account is deleted. Please contact support.' },
+            { status: 400 }
+          );
+        }
+        console.log(`✅ Verified customer exists: ${customerId}`);
+      } catch (customerError: any) {
+        console.error(`❌ Customer validation failed for ${customerId}:`, customerError.message);
+        return NextResponse.json(
+          {
+            error: 'Unable to verify billing account. This may indicate a test/live environment mismatch.',
+            details: 'Please contact support or resubscribe from the Pricing page.'
+          },
+          { status: 400 }
+        );
+      }
 
       console.log(`📝 Creating subscription in database for user: ${userId}`);
 

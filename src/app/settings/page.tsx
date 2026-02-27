@@ -1,12 +1,13 @@
 'use client';
 
 import { apiFetch } from '@/utils/api';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/services/supabase';
 import Header from '@/components/Header';
+import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -16,6 +17,41 @@ export default function SettingsPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // SMS Accountability Agent state
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [smsOptIn, setSmsOptIn] = useState(false);
+  const [timezone, setTimezone] = useState('America/New_York');
+  const [isSavingSms, setIsSavingSms] = useState(false);
+  const [smsLoaded, setSmsLoaded] = useState(false);
+
+  // Load existing SMS preferences
+  useEffect(() => {
+    if (!user) return;
+    const loadSmsPrefs = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('sms_preferences')
+          .select('phone_number, sms_opt_in, timezone')
+          .eq('user_id', user.id)
+          .maybeSingle(); // maybeSingle() returns null (not error) when no row exists
+        if (error) {
+          console.error('Failed to load SMS preferences:', error);
+          return;
+        }
+        if (data) {
+          setPhoneNumber(data.phone_number || '');
+          setSmsOptIn(data.sms_opt_in || false);
+          setTimezone(data.timezone || 'America/New_York');
+        }
+      } catch (err) {
+        console.error('Unexpected error loading SMS preferences:', err);
+      } finally {
+        setSmsLoaded(true);
+      }
+    };
+    loadSmsPrefs();
+  }, [user]);
 
   if (!user) {
     return (
@@ -47,9 +83,22 @@ export default function SettingsPage() {
 
     setIsLoadingPortal(true);
     try {
+      // Get the current session token for authorization
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      if (sessionError || !session) {
+        console.error('No active session:', sessionError);
+        toast.error('Please sign in again to manage your subscription.');
+        setIsLoadingPortal(false);
+        return;
+      }
+
       const response = await apiFetch('/api/create-portal-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({ userId: user.id }),
       });
 
@@ -59,12 +108,19 @@ export default function SettingsPage() {
         window.location.href = data.url;
       } else {
         console.error('Error creating portal session:', data.error);
-        alert('Failed to open billing portal. Please try again.');
+        if (response.status === 404) {
+          toast.error('Unable to access billing portal.', {
+            description: 'This can happen when switching Stripe accounts. Contact support or re-subscribe from the Pricing page.',
+            duration: 8000,
+          });
+        } else {
+          toast.error('Failed to open billing portal. Please try again.');
+        }
         setIsLoadingPortal(false);
       }
     } catch (error) {
       console.error('Error:', error);
-      alert('Failed to open billing portal. Please try again.');
+      toast.error('Failed to open billing portal. Please try again.');
       setIsLoadingPortal(false);
     }
   };
@@ -72,7 +128,7 @@ export default function SettingsPage() {
   const handleDeleteAccount = async () => {
     if (!user) return;
     if (deleteConfirmText !== 'DELETE') {
-      alert('Please type DELETE to confirm account deletion');
+      toast.error('Please type DELETE to confirm account deletion.');
       return;
     }
 
@@ -82,7 +138,7 @@ export default function SettingsPage() {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
       if (sessionError || !session) {
-        alert('Authentication error. Please sign in again and try deleting your account.');
+        toast.error('Authentication error. Please sign in again and try deleting your account.');
         setIsDeleting(false);
         setShowDeleteConfirm(false);
         setDeleteConfirmText('');
@@ -102,23 +158,72 @@ export default function SettingsPage() {
       const data = await response.json();
 
       if (response.ok) {
-        alert('Your account has been permanently deleted. You will be redirected to the home page.');
+        toast.success('Your account has been permanently deleted.');
         // Sign out and redirect
         await signOut();
         router.push('/');
       } else {
         console.error('Delete account error:', data.error);
-        alert(data.message || 'Failed to delete account. Please try again or contact support.');
+        toast.error(data.message || 'Failed to delete account. Please try again or contact support.');
         setIsDeleting(false);
         setShowDeleteConfirm(false);
         setDeleteConfirmText('');
       }
     } catch (error) {
       console.error('Error deleting account:', error);
-      alert('An error occurred while deleting your account. Please try again or contact support.');
+      toast.error('An error occurred while deleting your account. Please try again or contact support.');
       setIsDeleting(false);
       setShowDeleteConfirm(false);
       setDeleteConfirmText('');
+    }
+  };
+
+  const handleSaveSms = async () => {
+    if (!user) return;
+
+    // Strict E.164 US phone validation
+    const cleaned = phoneNumber.replace(/\D/g, '');
+    if (phoneNumber) {
+      // Accept exactly 10 digits (US local) or 11 digits starting with 1 (US with country code)
+      const isValid10 = cleaned.length === 10;
+      const isValid11 = cleaned.length === 11 && cleaned.startsWith('1');
+      if (!isValid10 && !isValid11) {
+        toast.error('Please enter a valid 10-digit US phone number (e.g. 555-123-4567).');
+        return;
+      }
+    }
+    if (smsOptIn && !phoneNumber) {
+      toast.error('Please enter a phone number to enable text reminders.');
+      return;
+    }
+
+    // Build E.164 from the last 10 digits (works for both 10- and 11-digit inputs)
+    const e164 = phoneNumber ? `+1${cleaned.slice(-10)}` : '';
+
+    setIsSavingSms(true);
+    try {
+      const { error } = await supabase
+        .from('sms_preferences')
+        .upsert({
+          user_id: user.id,
+          phone_number: e164 || null,
+          sms_opt_in: smsOptIn,
+          sms_consent_at: smsOptIn ? new Date().toISOString() : null,
+          timezone,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id' });
+
+      if (error) {
+        console.error('Failed to save SMS preferences:', error);
+        toast.error('Failed to save preferences. Please try again.');
+        return;
+      }
+      toast.success(smsOptIn ? 'Text reminders enabled.' : 'SMS preferences saved.');
+    } catch (err) {
+      console.error('Unexpected error saving SMS preferences:', err);
+      toast.error('Network error. Check your connection and try again.');
+    } finally {
+      setIsSavingSms(false);
     }
   };
 
@@ -153,8 +258,8 @@ export default function SettingsPage() {
               <p className="text-white text-lg">
                 {subscriptionStatus.isPremium && (
                   <span className="inline-flex items-center gap-2">
-                    <span className="w-2 h-2 bg-purple-400 rounded-full"></span>
-                    Premium
+                    <span className="w-2 h-2 bg-white/60 rounded-full"></span>
+                    Pro
                   </span>
                 )}
                 {subscriptionStatus.isTrialing && !subscriptionStatus.isPremium && (
@@ -196,14 +301,14 @@ export default function SettingsPage() {
 
         {/* Subscription Management */}
         {!subscriptionStatus.isPremium && (
-          <div className="bg-gradient-to-br from-purple-500/20 to-blue-500/20 backdrop-blur-xl border border-purple-400/30 rounded-3xl p-8 mb-6">
-            <h2 className="text-2xl font-bold text-white mb-4">Upgrade to Premium</h2>
+          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 mb-6">
+            <h2 className="text-2xl font-bold text-white mb-4">Upgrade to Pro</h2>
             <p className="text-white/70 mb-6">
               Get unlimited practice sessions, full session history, and advanced analytics.
             </p>
             <Link
               href="/pricing"
-              className="inline-block px-6 py-3 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 transition-all duration-200 rounded-full font-semibold shadow-lg"
+              className="inline-block px-6 py-3 bg-white/10 hover:bg-white/20 backdrop-blur-xl border border-white/30 hover:border-white/50 transition-all duration-200 rounded-full font-semibold"
             >
               View Pricing Plans
             </Link>
@@ -212,35 +317,35 @@ export default function SettingsPage() {
 
         {subscriptionStatus.isPremium && (
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 mb-6">
-            <h2 className="text-2xl font-bold text-white mb-6">Premium Subscription</h2>
+            <h2 className="text-2xl font-bold text-white mb-6">Pro Subscription</h2>
 
             {/* Feature List */}
             <div className="mb-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Your Premium Features</h3>
+              <h3 className="text-lg font-semibold text-white mb-4">Your Pro Features</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex items-start gap-3">
-                  <span className="text-purple-400 mt-1 flex-shrink-0">✓</span>
+                  <span className="text-white/80 mt-1 flex-shrink-0">✓</span>
                   <div>
                     <p className="text-white font-medium">Unlimited practice sessions</p>
                     <p className="text-white/60 text-sm">No limits, practice as much as you need</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="text-purple-400 mt-1 flex-shrink-0">✓</span>
+                  <span className="text-white/80 mt-1 flex-shrink-0">✓</span>
                   <div>
                     <p className="text-white font-medium">Full session history</p>
                     <p className="text-white/60 text-sm">Review all your past recordings</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="text-purple-400 mt-1 flex-shrink-0">✓</span>
+                  <span className="text-white/80 mt-1 flex-shrink-0">✓</span>
                   <div>
                     <p className="text-white font-medium">Progress tracking</p>
                     <p className="text-white/60 text-sm">Charts showing your improvement</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="text-purple-400 mt-1 flex-shrink-0">✓</span>
+                  <span className="text-white/80 mt-1 flex-shrink-0">✓</span>
                   <div>
                     <p className="text-white font-medium">Advanced analytics</p>
                     <p className="text-white/60 text-sm">Deep insights into your performance</p>
@@ -262,6 +367,111 @@ export default function SettingsPage() {
             </p>
           </div>
         )}
+
+        {/* SMS Accountability Agent */}
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 mb-6">
+          <div className="flex items-start justify-between mb-2">
+            <h2 className="text-2xl font-bold text-white">Accountability Coach</h2>
+            <span className="text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-1 rounded-full font-medium">
+              New
+            </span>
+          </div>
+          <p className="text-white/60 text-sm mb-6">
+            Get personalized text reminders based on your actual session data — practice streaks, score trends, and what to work on next.
+          </p>
+
+          {!smsLoaded ? (
+            <div className="text-white/40 text-sm">Loading...</div>
+          ) : (
+            <div className="space-y-5">
+              {/* Phone number */}
+              <div>
+                <label className="block text-white/70 text-sm font-medium mb-2">
+                  Phone Number <span className="text-white/40 font-normal">(US numbers only)</span>
+                </label>
+                <input
+                  type="tel"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  placeholder="(555) 123-4567"
+                  className="w-full max-w-xs px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/30 focus:outline-none focus:border-purple-500/50 transition-colors"
+                />
+              </div>
+
+              {/* Timezone */}
+              <div>
+                <label className="block text-white/70 text-sm font-medium mb-2">
+                  Your Timezone
+                </label>
+                <select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  className="w-full max-w-xs px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white focus:outline-none focus:border-purple-500/50 transition-colors appearance-none"
+                >
+                  <option value="America/New_York">Eastern (ET)</option>
+                  <option value="America/Chicago">Central (CT)</option>
+                  <option value="America/Denver">Mountain (MT)</option>
+                  <option value="America/Los_Angeles">Pacific (PT)</option>
+                  <option value="America/Anchorage">Alaska (AKT)</option>
+                  <option value="Pacific/Honolulu">Hawaii (HT)</option>
+                </select>
+              </div>
+
+              {/* What you'll receive */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+                <p className="text-white/70 text-sm font-medium mb-3">What you&apos;ll receive</p>
+                <ul className="space-y-2 text-white/60 text-sm">
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 mt-0.5">→</span>
+                    <span><strong className="text-white/80">Inactivity nudge</strong> — if you haven&apos;t practiced in 5+ days</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 mt-0.5">→</span>
+                    <span><strong className="text-white/80">Weekly recap</strong> — your scores, trends, and one thing to focus on</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-purple-400 mt-0.5">→</span>
+                    <span><strong className="text-white/80">Score alert</strong> — when a key metric drops or hits a personal best</span>
+                  </li>
+                </ul>
+                <p className="text-white/40 text-xs mt-3">Messages sent between 9 AM–8 PM your time. Max 3/week. Reply STOP anytime.</p>
+              </div>
+
+              {/* Opt-in consent checkbox */}
+              <label className="flex items-start gap-3 cursor-pointer group">
+                <div className="relative mt-0.5 flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={smsOptIn}
+                    onChange={(e) => setSmsOptIn(e.target.checked)}
+                    className="sr-only"
+                  />
+                  <div className={`w-5 h-5 rounded border-2 transition-all flex items-center justify-center ${smsOptIn ? 'bg-purple-500 border-purple-500' : 'border-white/30 group-hover:border-white/50'}`}>
+                    {smsOptIn && (
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                  </div>
+                </div>
+                <span className="text-white/60 text-xs leading-relaxed">
+                  I agree to receive automated text reminders from Pitcht at the number above.
+                  Message frequency varies (max 3/week). Message and data rates may apply.
+                  Reply STOP to unsubscribe at any time. Consent is not required to use Pitcht.
+                </span>
+              </label>
+
+              {/* Save button */}
+              <button
+                onClick={handleSaveSms}
+                disabled={isSavingSms}
+                className="px-6 py-3 bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 transition-all duration-200 rounded-full font-semibold text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSavingSms ? 'Saving...' : 'Save Text Reminders'}
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Danger Zone */}
         <div className="bg-white/5 backdrop-blur-xl border border-red-500/30 rounded-3xl p-8">

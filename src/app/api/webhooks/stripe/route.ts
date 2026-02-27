@@ -6,9 +6,7 @@ import {
   updateSubscriptionStatus,
 } from '@/services/subscriptionManager';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-11-17.clover',
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
@@ -52,6 +50,21 @@ export async function POST(request: Request) {
 
         if (!userId) {
           console.error('No user ID found in session');
+          break;
+        }
+
+        // SECURITY: Verify customer exists in current Stripe environment before saving
+        try {
+          const customer = await stripe.customers.retrieve(customerId);
+          if (customer.deleted) {
+            console.error(`❌ Customer ${customerId} is deleted - skipping subscription creation`);
+            break;
+          }
+          console.log(`✅ Verified customer exists: ${customerId}`);
+        } catch (customerError: any) {
+          console.error(`❌ Customer validation failed for ${customerId}:`, customerError.message);
+          console.error('⚠️  This usually means test/live environment mismatch - subscription NOT saved to database');
+          // Do not create subscription if customer doesn't exist
           break;
         }
 

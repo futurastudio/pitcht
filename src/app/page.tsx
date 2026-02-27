@@ -1,29 +1,30 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useInterview } from '@/context/InterviewContext';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import SessionSetupModal from '@/components/SessionSetupModal';
+import PaywallModal from '@/components/PaywallModal';
 import Header from '@/components/Header';
 
 const SESSION_TYPES = [
   {
     id: 'job-interview',
     title: 'Job Interview',
-    description: 'Practice common interview questions for your dream job.',
+    description: 'Paste a job description. AI generates role-specific questions, analyzes your clarity, pacing, and eye contact — and gives you answer frameworks for every response.',
     icon: '💼',
     color: 'from-blue-500 to-cyan-400',
   },
   {
-    id: 'sales-pitch',
-    title: 'Sales Pitch',
-    description: 'Refine your pitch and objection handling skills.',
-    icon: '🚀',
+    id: 'internship-interview',
+    title: 'Internship Interview',
+    description: 'Behavioral and domain-tailored questions for your field. Instant feedback on your structure, delivery, and presence — with answer frameworks to improve each response.',
+    icon: '🎯',
     color: 'from-orange-500 to-red-400',
   },
   {
     id: 'presentation',
     title: 'Presentation',
-    description: 'Prepare for a keynote or class presentation.',
+    description: 'Practice your pitch, case study, or presentation. AI measures your pace, confidence, and audience engagement.',
     icon: '🎤',
     color: 'from-purple-500 to-pink-400',
   },
@@ -32,8 +33,29 @@ const SESSION_TYPES = [
 export default function Dashboard() {
   const [selectedSession, setSelectedSession] = useState<{ id: string, title: string } | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
+
+  const { user, subscriptionStatus, refreshSubscriptionStatus } = useAuth();
+
+  // Refresh subscription status every time the home page is visited so the
+  // paywall banner always reflects the current session count — not stale
+  // cached state from login (e.g. user just completed their free session and
+  // navigated back without restarting the app).
+  useEffect(() => {
+    if (user) {
+      refreshSubscriptionStatus();
+    }
+  }, [user]);
+
+  const isExhaustedFreeUser = user && !subscriptionStatus.isPremium && !subscriptionStatus.isTrialing && !subscriptionStatus.canStartSession;
 
   const handleSelectSession = (session: typeof SESSION_TYPES[0]) => {
+    // Gate: if free-tier user has used their session, show paywall immediately
+    // (don't make them go through the full setup flow only to be blocked)
+    if (isExhaustedFreeUser) {
+      setShowPaywall(true);
+      return;
+    }
     setSelectedSession({ id: session.id, title: session.title });
     setIsModalOpen(true);
   };
@@ -55,8 +77,11 @@ export default function Dashboard() {
             Pitcht
           </h1>
           <p className="text-xl text-white/80 max-w-2xl mx-auto font-medium drop-shadow-md">
-            Master your communication skills with AI-powered video analysis.
-            Choose a session type to begin.
+            {user && subscriptionStatus.isPremium
+              ? 'You\'re on Pro. Ready to practice?'
+              : user && subscriptionStatus.isTrialing
+              ? 'Trial active — practice as much as you want.'
+              : 'Your 24/7 interview coach. Practice until you feel ready.'}
           </p>
         </div>
 
@@ -69,6 +94,11 @@ export default function Dashboard() {
             >
               {/* Hover Gradient Glow */}
               <div className={`absolute inset-0 bg-gradient-to-br ${session.color} opacity-0 group-hover:opacity-10 transition-opacity duration-500`} />
+
+              {/* Lock badge for exhausted free users */}
+              {isExhaustedFreeUser && (
+                <span className="absolute top-4 right-4 text-white/30 text-sm">🔒</span>
+              )}
 
               <span className="text-4xl mb-6 block transform group-hover:scale-110 transition-transform duration-300 drop-shadow-md">
                 {session.icon}
@@ -83,7 +113,7 @@ export default function Dashboard() {
               </p>
 
               <div className="mt-8 flex items-center text-sm font-bold text-white/60 group-hover:text-white transition-colors">
-                Start Session <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
+                {isExhaustedFreeUser ? 'Upgrade to unlock' : 'Start Session'} <span className="ml-2 group-hover:translate-x-1 transition-transform">→</span>
               </div>
             </button>
           ))}
@@ -95,6 +125,11 @@ export default function Dashboard() {
         onClose={() => setIsModalOpen(false)}
         sessionType={selectedSession?.id || ''}
         sessionTitle={selectedSession?.title || ''}
+      />
+
+      <PaywallModal
+        isOpen={showPaywall}
+        onClose={() => setShowPaywall(false)}
       />
 
       {/* Footer with Privacy Policy link */}

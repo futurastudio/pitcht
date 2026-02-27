@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { toast } from 'sonner';
 import { getOrCreateAnonymousUser } from '@/services/auth';
 import { createSession, saveRecording as saveRecordingToSupabase } from '@/services/sessionManager';
 import type { User } from '@supabase/supabase-js';
@@ -38,6 +39,7 @@ interface InterviewContextType {
     addRecording: (recording: Recording) => Promise<{ recordingId?: string }>;
     updateRecording: (recordingId: string, updates: Partial<Recording>) => void;
     clearSession: () => void;
+    repeatSession: (overrideConfig?: { type: string; context: string; questions: Question[] }) => void;
     questions: Question[];
     setQuestions: (questions: Question[]) => void;
     user: User | null;
@@ -53,6 +55,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     const [questions, setQuestions] = useState<Question[]>([]);
     const [user, setUser] = useState<User | null>(null);
     const [sessionId, setSessionId] = useState<string | null>(null);
+    const isCreatingSessionRef = useRef(false);
 
     // Get or create anonymous user on mount
     useEffect(() => {
@@ -61,7 +64,6 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
                 const currentUser = await getOrCreateAnonymousUser();
                 if (currentUser) {
                     setUser(currentUser);
-                    console.log('✅ User initialized:', currentUser.id);
                 }
             } catch (error) {
                 console.error('Failed to initialize user:', error);
@@ -96,28 +98,32 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     }, [sessionType, sessionContext, recordings, questions, sessionId]);
 
     // Create Supabase session when questions are generated
+    // sessionContext intentionally excluded from deps — captured by closure at call time
+    // isCreatingSessionRef guards against duplicate calls while the request is in-flight
     useEffect(() => {
         async function initSession() {
-            // Only create if we have: user, sessionType, questions, but no sessionId yet
-            if (user && sessionType && questions.length > 0 && !sessionId) {
+            // Only create if we have: user, sessionType, questions, but no sessionId yet,
+            // and no creation already in progress
+            if (user && sessionType && questions.length > 0 && !sessionId && !isCreatingSessionRef.current) {
+                isCreatingSessionRef.current = true;
                 try {
-                    console.log('📝 Creating Supabase session...');
                     const newSessionId = await createSession(
                         user.id,
-                        sessionType as any, // Type assertion for now
-                        sessionContext || '', // Use the stored context
+                        sessionType as any,
+                        sessionContext || '',
                         questions
                     );
                     setSessionId(newSessionId);
-                    console.log('✅ Supabase session created:', newSessionId);
                 } catch (error) {
                     console.error('Failed to create Supabase session:', error);
+                    // Reset flag on error so a retry is possible
+                    isCreatingSessionRef.current = false;
                     // Continue with localStorage fallback
                 }
             }
         }
         initSession();
-    }, [user, sessionType, questions, sessionId, sessionContext]);
+    }, [user, sessionType, questions, sessionId]); // sessionContext excluded intentionally
 
     const addRecording = async (recording: Recording): Promise<{ recordingId?: string }> => {
         // Always add to local state first (immediate feedback)
@@ -126,8 +132,6 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         // Upload to Supabase if we have user, sessionId, and videoBlob
         if (user && sessionId && recording.videoBlob) {
             try {
-                console.log('📤 Uploading recording to Supabase...');
-
                 const result = await saveRecordingToSupabase(
                     user.id,
                     sessionId,
@@ -157,18 +161,16 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
                         : rec
                 ));
 
-                console.log('✅ Recording uploaded to cloud - ID:', result.id, 'URL:', result.videoUrl);
-
                 // Return recordingId for async transcript updates
                 return { recordingId: result.id };
             } catch (error) {
                 console.error('Failed to upload recording:', error);
-                console.log('⚠️  Recording saved locally only');
-                // Recording is still saved in local state, so user isn't blocked
+                toast.error('Recording upload failed', {
+                    description: 'Your recording could not be saved. Check your connection — you may need to redo this answer.',
+                });
                 return {};
             }
         } else {
-            console.log('⚠️  Skipping cloud upload (missing user/session/blob)');
             return {};
         }
     };
@@ -179,7 +181,6 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
                 ? { ...rec, ...updates }
                 : rec
         ));
-        console.log('✅ Recording updated in state:', recordingId, updates);
     };
 
     const clearSession = () => {
@@ -195,6 +196,29 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('pitcht_session_id');
     };
 
+    const repeatSession = (overrideConfig?: { type: string; context: string; questions: Question[] }) => {
+        // Use override if provided (history page), otherwise use current context values (analysis page)
+        const currentType = overrideConfig?.type ?? sessionType;
+        const currentContext = overrideConfig?.context ?? sessionContext;
+        const currentQuestions = overrideConfig?.questions ?? [...questions];
+
+        // CRITICAL: Reset the creation guard ref before clearSession.
+        // isCreatingSessionRef is set true on first session creation and never
+        // reset on success. Without this, initSession skips creating the new DB
+        // session → recordings save nowhere.
+        isCreatingSessionRef.current = false;
+
+        // Clear all state and localStorage (same as a fresh session)
+        clearSession();
+
+        // Immediately repopulate with the same config.
+        // sessionId is now null → initSession useEffect will fire and create
+        // a fresh DB session (the ref reset above ensures it runs).
+        if (currentType) setSessionType(currentType);
+        setSessionContext(currentContext);
+        setQuestions(currentQuestions);
+    };
+
     return (
         <InterviewContext.Provider value={{
             sessionType,
@@ -205,6 +229,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
             addRecording,
             updateRecording,
             clearSession,
+            repeatSession,
             questions,
             setQuestions,
             user,

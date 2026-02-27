@@ -5,8 +5,7 @@
   "main": "dist/electron/main.js",
   "scripts": {
     "dev": "concurrently \"next dev\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:3000 dist/electron/main.js && cross-env NODE_ENV=development electron .\"",
-    "dev:full": "concurrently \"next dev\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:3000 dist/electron/main.js && cross-env NODE_ENV=development electron .\" \"python3 python-services/deepface_server.py\"",
-    "python:start": "python3 python-services/deepface_server.py",
+    "dev:full": "concurrently \"next dev\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:3000 dist/electron/main.js && cross-env NODE_ENV=development electron .\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -30,7 +29,9 @@
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "recharts": "^3.5.1",
-    "stripe": "^20.0.0"
+    "sonner": "^2.0.7",
+    "stripe": "^20.0.0",
+    "twilio": "^5.12.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

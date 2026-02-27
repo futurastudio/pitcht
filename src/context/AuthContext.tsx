@@ -83,14 +83,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .order('created_at', { ascending: false })
         .limit(1);
 
-      console.log('🔍 Subscription check:', { subscriptions, error });
-
       const subscription = subscriptions?.[0];
 
       if (subscription) {
         const isTrialing = subscription.status === 'trialing';
+        const isActive = subscription.status === 'active';
         setSubscriptionStatus({
-          isPremium: true,
+          isPremium: isActive,  // Only true for paying subscribers, not trialing
           isTrialing,
           trialEndsAt: isTrialing && subscription.current_period_end
             ? new Date(subscription.current_period_end)
@@ -98,26 +97,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           sessionsThisMonth: 0,
           canStartSession: true,
         });
-        console.log('✅ Premium subscription found:', { status: subscription.status, isTrialing });
-        return;
-      }
-
-      // Check trial status
-      const trialEnd = user.user_metadata?.trial_end;
-      const isTrialing = trialEnd && new Date(trialEnd) > new Date();
-
-      if (isTrialing) {
-        setSubscriptionStatus({
-          isPremium: false,
-          isTrialing: true,
-          trialEndsAt: new Date(trialEnd),
-          sessionsThisMonth: 0,
-          canStartSession: true,
-        });
         return;
       }
 
       // Check free tier usage (1 session per month)
+      // Note: Trial status comes exclusively from the subscriptions table (managed by Stripe webhooks).
+      // The legacy user_metadata.trial_end fallback has been removed to prevent expired trials
+      // from being silently re-granted if the subscription row is missing.
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
       startOfMonth.setHours(0, 0, 0, 0);

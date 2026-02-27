@@ -6,7 +6,7 @@
  *
  * Security:
  * - CSRF Protection: Validates origin/referer headers
- * - Rate Limiting: 10 requests per hour per user
+ * - Rate Limiting: 20 requests per hour per user
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,6 +15,7 @@ import { analyzeSpeech } from '@/services/speechAnalyzer';
 import type { SessionType } from '@/types/interview';
 import { withCSRFProtection } from '@/middleware/csrfProtection';
 import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
+import { createClient } from '@supabase/supabase-js';
 
 export interface GenerateFeedbackRequest {
   sessionType: SessionType;
@@ -69,9 +70,27 @@ export async function POST(request: NextRequest) {
     const csrfError = withCSRFProtection(request);
     if (csrfError) return csrfError;
 
-    // Rate Limiting (10 requests per hour)
+    // Auth check — require a valid Supabase session token
+    const authHeader = request.headers.get('Authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Rate Limiting (20 requests per hour)
     const userKey = getUserIdentifier(request);
-    const rateLimit = rateLimiter.check(userKey, RateLimitPresets.AI_ENDPOINT);
+    const rateLimit = rateLimiter.check(userKey, RateLimitPresets.GENERATE_FEEDBACK);
 
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -83,7 +102,7 @@ export async function POST(request: NextRequest) {
         {
           status: 429,
           headers: {
-            'X-RateLimit-Limit': String(RateLimitPresets.AI_ENDPOINT.maxRequests),
+            'X-RateLimit-Limit': String(RateLimitPresets.GENERATE_FEEDBACK.maxRequests),
             'X-RateLimit-Remaining': String(rateLimit.remaining),
             'X-RateLimit-Reset': String(rateLimit.resetAt),
           },
