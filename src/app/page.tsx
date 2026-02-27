@@ -80,7 +80,7 @@ export default function Dashboard() {
             {user && subscriptionStatus.isPremium
               ? 'You\'re on Pro. Ready to practice?'
               : user && subscriptionStatus.isTrialing
-              ? 'Trial active — practice as much as you want.'
+              ? 'Trial active — make your session count.'
               : 'Your 24/7 interview coach. Practice until you feel ready.'}
           </p>
         </div>

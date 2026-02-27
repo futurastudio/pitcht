@@ -60,24 +60,20 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       };
     }
 
-    // Free tier: Check monthly limit (1 session per month)
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-
+    // Free trial: 1 session lifetime — count all sessions ever created by this user
     const { count } = await supabase
       .from('sessions')
       .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .gte('created_at', startOfMonth.toISOString());
+      .eq('user_id', userId);
 
     const sessionsThisMonth = count || 0;
-    const FREE_TIER_LIMIT = 99; // TESTING ONLY — revert to 1 before launch
+    // Trial users get exactly 1 session total (counted lifetime, not per-month)
+    const TRIAL_SESSION_LIMIT = 1;
 
-    if (sessionsThisMonth >= FREE_TIER_LIMIT) {
+    if (sessionsThisMonth >= TRIAL_SESSION_LIMIT) {
       return {
         allowed: false,
-        reason: `You've used your ${FREE_TIER_LIMIT} free session this month. Upgrade to Premium for unlimited practice.`,
+        reason: `Your free trial session has been used. Upgrade to Pro for unlimited practice.`,
         isPremium: false,
         isTrialing: false,
         trialEndsAt: null,
@@ -92,7 +88,7 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       isTrialing: false,
       trialEndsAt: null,
       sessionsThisMonth,
-      sessionsRemaining: FREE_TIER_LIMIT - sessionsThisMonth,
+      sessionsRemaining: TRIAL_SESSION_LIMIT - sessionsThisMonth,
     };
   } catch (error) {
     console.error('Error checking session limit:', error);

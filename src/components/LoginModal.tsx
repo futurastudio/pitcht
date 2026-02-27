@@ -7,9 +7,11 @@ interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSignup: () => void;
+  /** Called after login succeeds — use to resume a pending flow (e.g. start session) */
+  onLoginComplete?: () => void;
 }
 
-export default function LoginModal({ isOpen, onClose, onSignup }: LoginModalProps) {
+export default function LoginModal({ isOpen, onClose, onSignup, onLoginComplete }: LoginModalProps) {
   const { signInWithEmail, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,7 +25,11 @@ export default function LoginModal({ isOpen, onClose, onSignup }: LoginModalProp
 
     try {
       await signInWithEmail(email, password);
-      onClose();
+      if (onLoginComplete) {
+        onLoginComplete();
+      } else {
+        onClose();
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to sign in');
     } finally {

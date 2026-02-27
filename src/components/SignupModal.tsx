@@ -7,9 +7,11 @@ interface SignupModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLogin: () => void;
+  /** Called after signup succeeds — use to resume a pending flow (e.g. start session) */
+  onSignupComplete?: () => void;
 }
 
-export default function SignupModal({ isOpen, onClose, onLogin }: SignupModalProps) {
+export default function SignupModal({ isOpen, onClose, onLogin, onSignupComplete }: SignupModalProps) {
   const { signUp, signInWithGoogle } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -30,7 +32,11 @@ export default function SignupModal({ isOpen, onClose, onLogin }: SignupModalPro
 
     try {
       await signUp(email, password);
-      onClose();
+      if (onSignupComplete) {
+        onSignupComplete();
+      } else {
+        onClose();
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to create account');
     } finally {
@@ -71,7 +77,7 @@ export default function SignupModal({ isOpen, onClose, onLogin }: SignupModalPro
         </button>
 
         <h2 className="text-2xl font-bold text-white mb-2">Start Your Free Trial</h2>
-        <p className="text-white/60 text-sm mb-6">7 days free, no credit card required</p>
+        <p className="text-white/60 text-sm mb-6">5-day trial · 1 full session included · no credit card required</p>
 
         {error && (
           <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-red-100 text-sm">
@@ -81,10 +87,10 @@ export default function SignupModal({ isOpen, onClose, onLogin }: SignupModalPro
 
         {/* Trial Benefits */}
         <div className="mb-6 p-4 bg-white/5 border border-white/10 rounded-xl">
-          <p className="text-white/90 text-sm font-semibold mb-2">Your 7-day trial includes:</p>
+          <p className="text-white/90 text-sm font-semibold mb-2">Your free trial includes:</p>
           <ul className="space-y-1.5 text-white/70 text-sm">
             <li className="flex items-center gap-2">
-              <span className="text-green-400">✓</span> Unlimited sessions for 7 days
+              <span className="text-green-400">✓</span> 1 full practice session
             </li>
             <li className="flex items-center gap-2">
               <span className="text-green-400">✓</span> AI-powered feedback

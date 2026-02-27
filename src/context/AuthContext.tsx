@@ -100,28 +100,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Check free tier usage (1 session per month)
-      // Note: Trial status comes exclusively from the subscriptions table (managed by Stripe webhooks).
-      // The legacy user_metadata.trial_end fallback has been removed to prevent expired trials
-      // from being silently re-granted if the subscription row is missing.
-      const startOfMonth = new Date();
-      startOfMonth.setDate(1);
-      startOfMonth.setHours(0, 0, 0, 0);
-
+      // Check free trial usage: 1 session lifetime total (not per-month).
+      // Trial status comes exclusively from the subscriptions table (managed by Stripe webhooks).
       const { count } = await supabase
         .from('sessions')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .gte('created_at', startOfMonth.toISOString());
+        .eq('user_id', user.id);
 
-      const sessionsThisMonth = count || 0;
+      const sessionsTotal = count || 0;
+      const TRIAL_SESSION_LIMIT = 1;
 
       setSubscriptionStatus({
         isPremium: false,
         isTrialing: false,
         trialEndsAt: null,
-        sessionsThisMonth,
-        canStartSession: sessionsThisMonth < 1,
+        sessionsThisMonth: sessionsTotal,
+        canStartSession: sessionsTotal < TRIAL_SESSION_LIMIT,
       });
     } catch (error) {
       console.error('Error fetching subscription status:', error);
@@ -150,9 +144,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string) => {
-    // Calculate 7-day trial period
+    // Calculate 5-day trial period
     const trialStart = new Date();
-    const trialEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const trialEnd = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
 
     const { data, error } = await supabase.auth.signUp({
       email,
