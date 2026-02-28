@@ -90,7 +90,6 @@ export async function POST(request: Request) {
         },
       ],
       subscription_data: {
-        trial_period_days: 5, // 5-day free trial
         metadata: {
           userId: userId,
         },

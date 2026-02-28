@@ -34,7 +34,7 @@ export default function PaywallModal({ isOpen, onClose, reason, sessionsUsed = 1
           {/* Heading */}
           <h2 className="text-2xl font-bold text-white mb-2">Upgrade to Pro</h2>
           <p className="text-white/70 mb-6">
-            {reason || `You've used your ${sessionsUsed} free session this month. Upgrade to continue practicing.`}
+            {reason || `You&apos;ve used your free session. Upgrade to Pro to keep practicing.`}
           </p>
 
           {/* Pricing Card */}
@@ -72,7 +72,7 @@ export default function PaywallModal({ isOpen, onClose, reason, sessionsUsed = 1
             }}
             className="w-full px-6 py-3 bg-white hover:bg-white/90 text-black font-bold rounded-full transition-all duration-200 shadow-lg mb-3"
           >
-            Upgrade Now
+            Upgrade to Pro
           </button>
 
           <button

@@ -76,8 +76,8 @@ export default function SignupModal({ isOpen, onClose, onLogin, onSignupComplete
           </svg>
         </button>
 
-        <h2 className="text-2xl font-bold text-white mb-2">Start Your Free Trial</h2>
-        <p className="text-white/60 text-sm mb-6">5-day trial · 1 full session included · no credit card required</p>
+        <h2 className="text-2xl font-bold text-white mb-2">Create Your Free Account</h2>
+        <p className="text-white/60 text-sm mb-6">1 free session included · no credit card required</p>
 
         {error && (
           <div className="mb-4 p-3 bg-red-500/20 border border-red-500/30 rounded-xl text-red-100 text-sm">
@@ -85,9 +85,9 @@ export default function SignupModal({ isOpen, onClose, onLogin, onSignupComplete
           </div>
         )}
 
-        {/* Trial Benefits */}
+        {/* Free session benefits */}
         <div className="mb-6 p-4 bg-white/5 border border-white/10 rounded-xl">
-          <p className="text-white/90 text-sm font-semibold mb-2">Your free trial includes:</p>
+          <p className="text-white/90 text-sm font-semibold mb-2">Your free session includes:</p>
           <ul className="space-y-1.5 text-white/70 text-sm">
             <li className="flex items-center gap-2">
               <span className="text-green-400">✓</span> 1 full practice session
@@ -96,7 +96,7 @@ export default function SignupModal({ isOpen, onClose, onLogin, onSignupComplete
               <span className="text-green-400">✓</span> AI-powered feedback
             </li>
             <li className="flex items-center gap-2">
-              <span className="text-green-400">✓</span> Video & speech analysis
+              <span className="text-green-400">✓</span> Video &amp; speech analysis
             </li>
             <li className="flex items-center gap-2">
               <span className="text-green-400">✓</span> Progress tracking
@@ -159,12 +159,12 @@ export default function SignupModal({ isOpen, onClose, onLogin, onSignupComplete
             disabled={loading}
             className="w-full px-4 py-3 bg-white text-black font-bold rounded-xl hover:bg-white/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Creating account...' : 'Start Free Trial'}
+            {loading ? 'Creating account...' : 'Create Free Account'}
           </button>
         </form>
 
         <p className="mt-4 text-center text-white/50 text-xs">
-          No credit card required • Cancel anytime
+          No credit card required
         </p>
 
         <p className="mt-6 text-center text-white/60 text-sm">
