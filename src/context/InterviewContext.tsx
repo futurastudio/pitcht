@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { toast } from 'sonner';
-import { getOrCreateAnonymousUser } from '@/services/auth';
+import { useAuth } from '@/context/AuthContext';
 import { createSession, saveRecording as saveRecordingToSupabase } from '@/services/sessionManager';
 import type { User } from '@supabase/supabase-js';
 import type { Question, SessionType } from '@/types/interview';
@@ -49,29 +49,13 @@ interface InterviewContextType {
 const InterviewContext = createContext<InterviewContextType | undefined>(undefined);
 
 export function InterviewProvider({ children }: { children: ReactNode }) {
+    const { user } = useAuth();
     const [sessionType, setSessionType] = useState<string | null>(null);
     const [sessionContext, setSessionContext] = useState<string>('');
     const [recordings, setRecordings] = useState<Recording[]>([]);
     const [questions, setQuestions] = useState<Question[]>([]);
-    const [user, setUser] = useState<User | null>(null);
     const [sessionId, setSessionId] = useState<string | null>(null);
     const isCreatingSessionRef = useRef(false);
-
-    // Get or create anonymous user on mount
-    useEffect(() => {
-        async function initUser() {
-            try {
-                const currentUser = await getOrCreateAnonymousUser();
-                if (currentUser) {
-                    setUser(currentUser);
-                }
-            } catch (error) {
-                console.error('Failed to initialize user:', error);
-                // App can still work with localStorage fallback
-            }
-        }
-        initUser();
-    }, []);
 
     // Load from localStorage on mount (fallback)
     useEffect(() => {

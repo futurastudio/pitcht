@@ -8,6 +8,7 @@ import Prompter from '@/components/Prompter';
 import Controls from '@/components/Controls';
 import ContextModal from '@/components/ContextModal';
 import { useInterview } from '@/context/InterviewContext';
+import { useAuth } from '@/context/AuthContext';
 import { analyzeVideoPath } from '@/services/emotionAnalyzer';
 import { calculatePresenceScore } from '@/services/videoAnalyzer';
 import { analyzeSpeech, SpeechMetrics } from '@/services/speechAnalyzer';
@@ -17,6 +18,7 @@ import { toast } from 'sonner';
 export default function InterviewPage() {
     const router = useRouter();
     const { addRecording, updateRecording, sessionType, sessionContext, questions, sessionId } = useInterview();
+    const { user, loading: authLoading } = useAuth();
 
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [isRecording, setIsRecording] = useState(false);
@@ -30,11 +32,18 @@ export default function InterviewPage() {
 
     useEffect(() => {
         setMounted(true);
+        // Wait for auth to resolve before checking
+        if (authLoading) return;
+        // Auth guard: must be logged in to access the interview
+        if (!user) {
+            router.push('/');
+            return;
+        }
         if (!sessionType || questions.length === 0) {
             // Redirect if no session started or no questions generated
             router.push('/');
         }
-    }, [sessionType, questions, router]);
+    }, [authLoading, user, sessionType, questions, router]);
 
     // Session elapsed timer — tracks total time on the interview page
     useEffect(() => {
