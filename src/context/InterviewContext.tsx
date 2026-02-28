@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { getOrCreateAnonymousUser } from '@/services/auth';
 import { createSession, saveRecording as saveRecordingToSupabase } from '@/services/sessionManager';
 import type { User } from '@supabase/supabase-js';
-import type { Question } from '@/types/interview';
+import type { Question, SessionType } from '@/types/interview';
 
 export interface Recording {
     questionId: string;
@@ -81,6 +81,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         const savedQuestions = localStorage.getItem('pitcht_questions');
         const savedSessionId = localStorage.getItem('pitcht_session_id');
 
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- batch setState from localStorage on mount is intentional (runs once, no cascading renders)
         if (savedSession) setSessionType(savedSession);
         if (savedContext) setSessionContext(savedContext);
         if (savedRecordings) setRecordings(JSON.parse(savedRecordings));
@@ -109,7 +110,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
                 try {
                     const newSessionId = await createSession(
                         user.id,
-                        sessionType as any,
+                        sessionType as SessionType,
                         sessionContext || '',
                         questions
                     );

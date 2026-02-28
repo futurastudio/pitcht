@@ -144,8 +144,8 @@ export async function POST(request: NextRequest) {
         console.log(`💳 Canceling Stripe subscription: ${subscription.stripe_subscription_id}`);
         await stripe.subscriptions.cancel(subscription.stripe_subscription_id);
         console.log('✅ Stripe subscription canceled');
-      } catch (stripeError: any) {
-        console.error('⚠️ Error canceling Stripe subscription:', stripeError.message);
+      } catch (stripeError: unknown) {
+        console.error('⚠️ Error canceling Stripe subscription:', stripeError instanceof Error ? stripeError.message : stripeError);
         // Continue anyway - subscription will be deleted from DB
       }
 

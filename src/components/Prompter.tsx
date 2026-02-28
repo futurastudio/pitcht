@@ -21,7 +21,7 @@ export default function Prompter({ question, isRecording, recordingDuration = 0 
             <div className="relative bg-white/8 backdrop-blur-2xl border border-white/15 shadow-2xl rounded-2xl px-8 py-5 text-center overflow-hidden">
                 {/* Question Text - Compact Size */}
                 <h2 className="text-base md:text-lg font-medium leading-relaxed tracking-normal text-white/95 drop-shadow-lg max-w-2xl mx-auto">
-                    "{question}"
+                    &quot;{question}&quot;
                 </h2>
 
                 {/* Subtle glass reflection effect */}

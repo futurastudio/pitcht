@@ -55,21 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Update subscription status when user changes
-  useEffect(() => {
-    if (user) {
-      refreshSubscriptionStatus();
-    } else {
-      setSubscriptionStatus({
-        isPremium: false,
-        isTrialing: false,
-        trialEndsAt: null,
-        sessionsThisMonth: 0,
-        canStartSession: true,
-      });
-    }
-  }, [user]);
-
   const refreshSubscriptionStatus = async () => {
     if (!user) return;
 
@@ -124,6 +109,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('Error fetching subscription status:', error);
     }
   };
+
+  // Update subscription status when user changes
+  useEffect(() => {
+    if (user) {
+      refreshSubscriptionStatus();
+    } else {
+      setSubscriptionStatus({
+        isPremium: false,
+        isTrialing: false,
+        trialEndsAt: null,
+        sessionsThisMonth: 0,
+        canStartSession: true,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const signInWithEmail = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signInWithPassword({

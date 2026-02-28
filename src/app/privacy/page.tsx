@@ -32,7 +32,7 @@ export default function PrivacyPolicyPage() {
           <section className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8">
             <h2 className="text-2xl font-semibold text-white mb-4">Introduction</h2>
             <p className="mb-4">
-              Pitcht ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy
+              Pitcht (&quot;we,&quot; &quot;our,&quot; or &quot;us&quot;) is committed to protecting your privacy. This Privacy Policy
               explains how we collect, use, and safeguard your information when you use our interview
               practice platform.
             </p>
@@ -259,7 +259,7 @@ export default function PrivacyPolicyPage() {
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold text-white/90 mb-2">Children's Privacy</h3>
+                <h3 className="text-lg font-semibold text-white/90 mb-2">Children&apos;s Privacy</h3>
                 <p className="text-white/70">
                   Pitcht is not intended for users under 13 years of age. We do not knowingly collect
                   information from children under 13.
@@ -270,7 +270,7 @@ export default function PrivacyPolicyPage() {
                 <h3 className="text-lg font-semibold text-white/90 mb-2">Policy Updates</h3>
                 <p className="text-white/70">
                   We may update this Privacy Policy from time to time. Significant changes will be
-                  communicated via email and reflected in the "Last Updated" date above.
+                  communicated via email and reflected in the &quot;Last Updated&quot; date above.
                 </p>
               </div>
 
@@ -290,7 +290,7 @@ export default function PrivacyPolicyPage() {
           <section className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8">
             <h2 className="text-2xl font-semibold text-white mb-4">Contact Us</h2>
             <p className="mb-4 text-white/80">
-              Questions or concerns about this Privacy Policy? We're here to help.
+              Questions or concerns about this Privacy Policy? We&apos;re here to help.
             </p>
             <div className="space-y-2 text-white/70">
               <p>

@@ -17,7 +17,35 @@ export default function Header() {
       <header className="absolute top-0 left-0 right-0 z-40 p-6">
         <div className="flex justify-between items-center">
           {/* Logo */}
-          <Link href="/" className="text-white font-bold text-xl">
+          <Link href="/" className="flex items-center gap-2 text-white font-bold text-xl">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {/* Left eye */}
+              <path
+                d="M3 13 C6 8, 13 8, 16 13 C13 18, 6 18, 3 13 Z"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              {/* Right eye */}
+              <path
+                d="M16 13 C19 8, 26 8, 29 13 C26 18, 19 18, 16 13 Z"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              {/* Smile */}
+              <path
+                d="M10 23 Q16 27 22 23"
+                stroke="white"
+                strokeWidth="2"
+                strokeLinecap="round"
+                fill="none"
+              />
+            </svg>
             Pitcht
           </Link>
 

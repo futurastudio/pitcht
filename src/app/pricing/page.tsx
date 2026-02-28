@@ -14,7 +14,7 @@ export default function PricingPage() {
   const { user, subscriptionStatus } = useAuth();
   const [isLoading, setIsLoading] = useState<string | null>(null);
 
-  const handleSubscribe = async (priceId: string, planName: string) => {
+  const handleSubscribe = async (priceId: string, _planName: string) => {
     if (!user) {
       // Redirect to home to sign up first
       router.push('/?signup=true');
@@ -245,7 +245,7 @@ export default function PricingPage() {
                   Get Pro for <span className="text-white font-bold">$149/year</span>
                 </p>
                 <p className="text-white/50 text-sm">
-                  That's only <span className="text-green-400 font-semibold">$12.42/month</span> — 2 months free!
+                  That&apos;s only <span className="text-green-400 font-semibold">$12.42/month</span> — 2 months free!
                 </p>
               </div>
               <div className="flex-shrink-0">
@@ -281,7 +281,7 @@ export default function PricingPage() {
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
               <h3 className="text-white font-semibold mb-2">Can I cancel anytime?</h3>
               <p className="text-white/60 text-sm">
-                Yes! You can cancel your subscription at any time. You'll continue to have access until the end of your current billing period.
+                Yes! You can cancel your subscription at any time. You&apos;ll continue to have access until the end of your current billing period.
               </p>
             </div>
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
@@ -293,7 +293,7 @@ export default function PricingPage() {
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
               <h3 className="text-white font-semibold mb-2">Do you offer refunds?</h3>
               <p className="text-white/60 text-sm">
-                Yes! We offer a 30-day money-back guarantee. If you're not satisfied, contact us for a full refund.
+                Yes! We offer a 30-day money-back guarantee. If you&apos;re not satisfied, contact us for a full refund.
               </p>
             </div>
           </div>

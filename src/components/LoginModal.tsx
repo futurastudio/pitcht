@@ -30,8 +30,8 @@ export default function LoginModal({ isOpen, onClose, onSignup, onLoginComplete 
       } else {
         onClose();
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to sign in');
     } finally {
       setLoading(false);
     }
@@ -41,8 +41,8 @@ export default function LoginModal({ isOpen, onClose, onSignup, onLoginComplete 
     try {
       await signInWithGoogle();
       // OAuth will redirect, no need to close modal
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in with Google');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to sign in with Google');
     }
   };
 
@@ -137,7 +137,7 @@ export default function LoginModal({ isOpen, onClose, onSignup, onLoginComplete 
         </form>
 
         <p className="mt-6 text-center text-white/60 text-sm">
-          Don't have an account?{' '}
+          Don&apos;t have an account?{' '}
           <button
             onClick={() => {
               onClose();

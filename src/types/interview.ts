@@ -24,6 +24,7 @@ export interface SessionContext {
   additionalInfo?: string; // Any extra context
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface GenerateQuestionsRequest extends SessionContext {}
 
 export interface GenerateQuestionsResponse {

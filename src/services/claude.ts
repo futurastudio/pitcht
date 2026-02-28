@@ -20,9 +20,10 @@ async function retryWithBackoff<T>(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Check if this is a retryable error (529 overloaded or 5xx errors)
-      const isRetryable = error?.status === 529 || (error?.status >= 500 && error?.status < 600);
+      const errWithStatus = error as { status?: number };
+      const isRetryable = errWithStatus?.status === 529 || ((errWithStatus?.status ?? 0) >= 500 && (errWithStatus?.status ?? 0) < 600);
       const isLastAttempt = attempt === maxRetries;
 
       if (!isRetryable || isLastAttempt) {
@@ -209,11 +210,11 @@ No markdown, no code blocks, no explanations - just the raw JSON array.`;
     }));
 
     return questionsWithUUIDs;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating questions with Claude:', error);
 
     // Provide specific error message for overload
-    if (error?.status === 529) {
+    if ((error as { status?: number })?.status === 529) {
       throw new Error('Claude API is temporarily overloaded. Please wait 30-60 seconds and try again.');
     }
 
@@ -378,11 +379,11 @@ Return ONLY the JSON object, no markdown or code blocks.`;
     }
 
     return feedback;
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating feedback with Claude:', error);
 
     // Provide specific error message for overload
-    if (error?.status === 529) {
+    if ((error as { status?: number })?.status === 529) {
       throw new Error('Claude API is temporarily overloaded. Please wait 30-60 seconds and try again.');
     }
 

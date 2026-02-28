@@ -31,7 +31,7 @@ export async function extractAudioFromVideo(videoBlob: Blob): Promise<Blob> {
     });
 
     // Create MediaStream from video element
-    // @ts-ignore - captureStream is not in TypeScript definitions but exists in browsers
+    // @ts-expect-error -- captureStream is not in TypeScript lib but exists in all modern browsers
     const stream: MediaStream = video.captureStream ? video.captureStream() : video.mozCaptureStream();
 
     // Get only the audio track

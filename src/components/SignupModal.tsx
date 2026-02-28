@@ -37,8 +37,8 @@ export default function SignupModal({ isOpen, onClose, onLogin, onSignupComplete
       } else {
         onClose();
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to create account');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create account');
     } finally {
       setLoading(false);
     }
@@ -48,8 +48,8 @@ export default function SignupModal({ isOpen, onClose, onLogin, onSignupComplete
     try {
       await signInWithGoogle();
       // OAuth will redirect, no need to close modal
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in with Google');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to sign in with Google');
     }
   };
 

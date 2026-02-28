@@ -31,8 +31,8 @@ export default function AccountConversionModal({ isOpen, onClose }: AccountConve
       await signUp(email, password);
       // Modal will auto-close when user state changes
       if (onClose) onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to create account');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create account');
     } finally {
       setLoading(false);
     }
@@ -41,8 +41,8 @@ export default function AccountConversionModal({ isOpen, onClose }: AccountConve
   const handleGoogleSignIn = async () => {
     try {
       await signInWithGoogle();
-    } catch (err: any) {
-      setError(err.message || 'Failed to sign in with Google');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to sign in with Google');
     }
   };
 
@@ -202,7 +202,7 @@ export default function AccountConversionModal({ isOpen, onClose }: AccountConve
             </form>
 
             <p className="mt-4 text-center text-white/60 text-sm">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <button
                 onClick={() => setShowLogin(false)}
                 className="text-white font-semibold hover:underline"

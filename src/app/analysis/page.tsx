@@ -53,12 +53,12 @@ export default function Analysis() {
 
             try {
                 // Check if running in Electron mode
-                // @ts-ignore
+                // @ts-expect-error -- window.electron is injected by Electron preload script
                 const isElectron = typeof window !== 'undefined' && window.electron && window.electron.readVideo;
 
                 if (isElectron) {
                     // Electron mode: Load video from local filesystem
-                    // @ts-ignore
+                    // @ts-expect-error -- window.electron is injected by Electron preload script
                     const result = await window.electron.readVideo(selectedRecording.videoPath);
                     if (result.success) {
                         setVideoSrc(result.data);

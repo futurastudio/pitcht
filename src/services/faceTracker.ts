@@ -108,11 +108,11 @@ class FaceTrackerService {
     this.videoElement = videoElement;
 
     // Check if FaceMesh is available (loaded from CDN)
-    if (typeof window === 'undefined' || !(window as any).FaceMesh) {
+    if (typeof window === 'undefined' || !(window as Window & { FaceMesh?: unknown }).FaceMesh) {
       throw new Error('MediaPipe FaceMesh not loaded. Please ensure the MediaPipe script is included.');
     }
 
-    const FaceMeshConstructor = (window as any).FaceMesh;
+    const FaceMeshConstructor = (window as unknown as { FaceMesh: new (opts: { locateFile: (file: string) => string }) => FaceMesh }).FaceMesh;
     this.faceMesh = new FaceMeshConstructor({
       locateFile: (file: string) => {
         return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;

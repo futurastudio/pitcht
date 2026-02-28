@@ -10,7 +10,7 @@ import ContextModal from '@/components/ContextModal';
 import { useInterview } from '@/context/InterviewContext';
 import { analyzeVideoPath } from '@/services/emotionAnalyzer';
 import { calculatePresenceScore } from '@/services/videoAnalyzer';
-import { analyzeSpeech } from '@/services/speechAnalyzer';
+import { analyzeSpeech, SpeechMetrics } from '@/services/speechAnalyzer';
 import { completeSession } from '@/services/sessionManager';
 import { toast } from 'sonner';
 
@@ -215,7 +215,7 @@ export default function InterviewPage() {
         questionText: string,
         transcript: string,
         duration: number,
-        speechMetrics: any,
+        speechMetrics: SpeechMetrics,
         videoMetrics?: {
             eyeContactPercentage?: number;
             gazeStability?: number;
@@ -295,9 +295,9 @@ export default function InterviewPage() {
             // Stop Recording
             setIsRecording(false);
             setCountdown(null); // Clear countdown if any
-            // @ts-ignore
+            // @ts-expect-error -- window.stopRecording injected by VideoFeed component
             if (window.stopRecording) {
-                // @ts-ignore
+                // @ts-expect-error -- window.stopRecording injected by VideoFeed component
                 const { blob, audioBlob, eyeTracking } = await window.stopRecording();
                 const buffer = await blob.arrayBuffer();
 
@@ -305,9 +305,9 @@ export default function InterviewPage() {
                 const transcriptionPromise = transcribeRecording(audioBlob);
 
                 // Save via Electron
-                // @ts-ignore
+                // @ts-expect-error -- window.electron injected by Electron preload script
                 if (window.electron) {
-                    // @ts-ignore
+                    // @ts-expect-error -- window.electron injected by Electron preload script
                     const result = await window.electron.saveVideo(buffer);
                     if (result.success) {
                         const videoPath = result.filePath;
@@ -487,9 +487,9 @@ export default function InterviewPage() {
                         setIsRecording(true);
                         setCountdown(null);
 
-                        // @ts-ignore
+                        // @ts-expect-error -- window.startRecording injected by VideoFeed component
                         if (window.startRecording) {
-                            // @ts-ignore
+                            // @ts-expect-error -- window.startRecording injected by VideoFeed component
                             window.startRecording();
                         }
 

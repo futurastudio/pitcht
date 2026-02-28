@@ -36,8 +36,8 @@ interface Recording {
       concisenessLevel?: string;
       exampleQuality?: string;
     };
-    strengths: any;
-    improvements: any;
+    strengths: { area: string; detail: string }[];
+    improvements: { area: string; detail: string; suggestion: string; priority: string; example?: string }[];
     next_steps?: string[];
   }>;
 }
@@ -345,7 +345,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                         <div>
                           <h4 className="text-green-300 text-xs font-semibold mb-2">✓ Strengths</h4>
                           <ul className="space-y-1">
-                            {selectedRecording.analyses[0].strengths.slice(0, 2).map((strength: any, idx: number) => (
+                            {selectedRecording.analyses[0].strengths.slice(0, 2).map((strength, idx) => (
                               <li key={idx} className="text-white/70 text-xs">• {strength.detail}</li>
                             ))}
                           </ul>
@@ -356,7 +356,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                         <div>
                           <h4 className="text-yellow-300 text-xs font-semibold mb-2">→ Areas to Improve</h4>
                           <ul className="space-y-1">
-                            {selectedRecording.analyses[0].improvements.slice(0, 2).map((improvement: any, idx: number) => (
+                            {selectedRecording.analyses[0].improvements.slice(0, 2).map((improvement, idx) => (
                               <li key={idx} className="text-white/70 text-xs">• {improvement.suggestion}</li>
                             ))}
                           </ul>
@@ -543,7 +543,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                     <span>📚</span> Coaching Framework Examples
                   </h3>
                   <div className="space-y-4">
-                    {selectedRecording.analyses[0].improvements.map((improvement: any, idx: number) => (
+                    {selectedRecording.analyses[0].improvements.map((improvement, idx) => (
                       <div key={idx} className={`border-l-4 ${
                         improvement.priority === 'high' ? 'border-red-400/50' :
                         improvement.priority === 'medium' ? 'border-yellow-400/50' :

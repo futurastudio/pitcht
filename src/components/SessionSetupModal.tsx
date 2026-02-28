@@ -224,7 +224,7 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                                 {/* Unauthenticated nudge */}
                                 {!user && (
                                     <p className="text-white/40 text-xs text-center -mt-2">
-                                        You'll create a free account to start your session
+                                        You&apos;ll create a free account to start your session
                                     </p>
                                 )}
 

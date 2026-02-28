@@ -90,7 +90,7 @@ export async function POST(request: Request) {
         },
       ],
       subscription_data: {
-        trial_period_days: 7, // 7-day free trial
+        trial_period_days: 5, // 5-day free trial
         metadata: {
           userId: userId,
         },
@@ -101,10 +101,10 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ url: session.url });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating checkout session:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
   }

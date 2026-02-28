@@ -161,7 +161,7 @@ function SuccessContent() {
           {/* What's Next */}
           <div className="text-left mb-8">
             <h2 className="text-2xl font-bold text-white mb-4 text-center">
-              What's included in Premium
+              What&apos;s included in Premium
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="flex items-start gap-3">

@@ -27,8 +27,8 @@ export default function TermsOfServicePage() {
           <section>
             <h2 className="text-2xl font-semibold text-white mb-4">1. Acceptance of Terms</h2>
             <p className="mb-4">
-              Welcome to Pitcht ("Service," "we," "our," or "us"). By accessing or using our interview
-              practice platform, you agree to be bound by these Terms of Service ("Terms"). If you do not
+              Welcome to Pitcht (&quot;Service,&quot; &quot;we,&quot; &quot;our,&quot; or &quot;us&quot;). By accessing or using our interview
+              practice platform, you agree to be bound by these Terms of Service (&quot;Terms&quot;). If you do not
               agree to these Terms, you may not access or use the Service.
             </p>
             <p>
@@ -126,7 +126,7 @@ export default function TermsOfServicePage() {
             <h3 className="text-xl font-semibold text-purple-400 mb-3">6.1 Your Content</h3>
             <p className="mb-4">
               You retain all ownership rights to content you create, upload, or submit to the Service
-              ("User Content"), including video recordings, audio, and text.
+              (&quot;User Content&quot;), including video recordings, audio, and text.
             </p>
 
             <h3 className="text-xl font-semibold text-purple-400 mb-3">6.2 License Grant</h3>
@@ -182,7 +182,7 @@ export default function TermsOfServicePage() {
               <li>All payments are processed securely through Stripe</li>
               <li>Subscriptions automatically renew unless canceled before the renewal date</li>
               <li>You authorize us to charge your payment method on each renewal date</li>
-              <li>Prices are subject to change with 30 days' notice</li>
+              <li>Prices are subject to change with 30 days&apos; notice</li>
               <li>All fees are non-refundable except as required by law</li>
             </ul>
 
@@ -224,7 +224,7 @@ export default function TermsOfServicePage() {
             <div className="bg-gray-800/50 backdrop-blur-sm p-4 rounded-lg mb-4">
               <p className="font-semibold text-yellow-400 mb-2">IMPORTANT DISCLAIMER</p>
               <p className="text-sm">
-                THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, EITHER
+                THE SERVICE IS PROVIDED &quot;AS IS&quot; AND &quot;AS AVAILABLE&quot; WITHOUT WARRANTIES OF ANY KIND, EITHER
                 EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
                 PARTICULAR PURPOSE, OR NON-INFRINGEMENT.
               </p>
@@ -268,7 +268,7 @@ export default function TermsOfServicePage() {
             <p>
               You agree to indemnify, defend, and hold harmless Pitcht, Inc. and its officers, directors,
               employees, and agents from any claims, liabilities, damages, losses, and expenses (including
-              reasonable attorneys' fees) arising out of or related to:
+              reasonable attorneys&apos; fees) arising out of or related to:
             </p>
             <ul className="list-disc list-inside space-y-2 ml-4 mt-4">
               <li>Your use or misuse of the Service</li>

@@ -113,8 +113,8 @@ export async function POST(request: Request) {
           );
         }
         console.log(`✅ Verified customer exists: ${customerId}`);
-      } catch (customerError: any) {
-        console.error(`❌ Customer validation failed for ${customerId}:`, customerError.message);
+      } catch (customerError: unknown) {
+        console.error(`❌ Customer validation failed for ${customerId}:`, customerError instanceof Error ? customerError.message : customerError);
         return NextResponse.json(
           {
             error: 'Unable to verify billing account. This may indicate a test/live environment mismatch.',
@@ -128,7 +128,7 @@ export async function POST(request: Request) {
 
       // Create subscription in database (using admin client to bypass RLS)
       // Note: Using bracket notation to access properties that exist at runtime but may not be in TypeScript types
-      const subscriptionData = subscription as any;
+      const subscriptionData = subscription as unknown as { current_period_start: number; current_period_end: number };
       const { data: newSubscription, error: insertError } = await supabaseAdmin
         .from('subscriptions')
         .insert({
@@ -161,10 +161,10 @@ export async function POST(request: Request) {
       { error: `Subscription status is ${subscription.status}` },
       { status: 400 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error verifying subscription:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
   }

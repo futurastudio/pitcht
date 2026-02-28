@@ -26,7 +26,7 @@ export interface TrialReminderEmail {
  * Get users whose trial is ending soon
  * @param daysRemaining Number of days until trial ends
  */
-export async function getUsersWithTrialEnding(daysRemaining: number): Promise<any[]> {
+export async function getUsersWithTrialEnding(daysRemaining: number): Promise<Record<string, unknown>[]> {
   try {
     // Calculate the target date (trial_end approximately X days from now)
     const targetDate = new Date();

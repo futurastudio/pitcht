@@ -39,7 +39,7 @@ const startTime = Date.now();
  * GET /api/health
  * Performs health checks on all critical services
  */
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   const checks = await performHealthChecks();
 
   // Determine overall status
@@ -113,7 +113,7 @@ async function checkDatabase(): Promise<CheckResult> {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Simple query to verify database connectivity
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('sessions')
       .select('id')
       .limit(1);

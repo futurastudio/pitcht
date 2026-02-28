@@ -51,7 +51,7 @@ export default function VideoFeed() {
         // A better React pattern would be to lift this state up or use a Ref in Context.
         // Let's use the window pattern for simplicity as we moved this to Layout.
 
-        // @ts-ignore
+        // @ts-expect-error -- attaching to window for cross-component access (MVP pattern)
         window.startRecording = () => {
             if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'inactive') {
                 chunksRef.current = [];
@@ -66,7 +66,7 @@ export default function VideoFeed() {
             }
         };
 
-        // @ts-ignore
+        // @ts-expect-error -- attaching to window for cross-component access (MVP pattern)
         window.stopRecording = async () => {
             return new Promise<{ blob: Blob; audioBlob: Blob; eyeTracking: EyeTrackingMetrics | null }>((resolve) => {
                 if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {

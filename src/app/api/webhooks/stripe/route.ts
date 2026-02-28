@@ -27,10 +27,10 @@ export async function POST(request: Request) {
     let event: Stripe.Event;
     try {
       event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-    } catch (err: any) {
-      console.error('Webhook signature verification failed:', err.message);
+    } catch (err: unknown) {
+      console.error('Webhook signature verification failed:', err instanceof Error ? err.message : err);
       return NextResponse.json(
-        { error: `Webhook Error: ${err.message}` },
+        { error: `Webhook Error: ${err instanceof Error ? err.message : String(err)}` },
         { status: 400 }
       );
     }
@@ -61,8 +61,8 @@ export async function POST(request: Request) {
             break;
           }
           console.log(`✅ Verified customer exists: ${customerId}`);
-        } catch (customerError: any) {
-          console.error(`❌ Customer validation failed for ${customerId}:`, customerError.message);
+        } catch (customerError: unknown) {
+          console.error(`❌ Customer validation failed for ${customerId}:`, customerError instanceof Error ? customerError.message : customerError);
           console.error('⚠️  This usually means test/live environment mismatch - subscription NOT saved to database');
           // Do not create subscription if customer doesn't exist
           break;
@@ -85,13 +85,13 @@ export async function POST(request: Request) {
       }
 
       case 'customer.subscription.updated': {
-        const subscription = event.data.object as any;
+        const subscription = event.data.object as Stripe.Subscription;
         console.log('Subscription updated:', subscription.id);
 
         await updateSubscriptionStatus(
           subscription.id,
-          subscription.status as any,
-          new Date(subscription.current_period_end * 1000)
+          subscription.status as 'active' | 'canceled' | 'past_due' | 'trialing',
+          new Date((subscription as unknown as { current_period_end: number }).current_period_end * 1000)
         );
 
         console.log(`✅ Subscription updated: ${subscription.id} → ${subscription.status}`);
@@ -113,12 +113,12 @@ export async function POST(request: Request) {
       }
 
       case 'invoice.payment_failed': {
-        const invoice = event.data.object as any;
+        const invoice = event.data.object as unknown as { id: string; subscription: string | null; period_end: number };
         console.log('Payment failed for invoice:', invoice.id);
 
         if (invoice.subscription) {
           await updateSubscriptionStatus(
-            invoice.subscription as string,
+            invoice.subscription,
             'past_due',
             new Date(invoice.period_end * 1000)
           );
@@ -128,12 +128,12 @@ export async function POST(request: Request) {
       }
 
       case 'invoice.payment_succeeded': {
-        const invoice = event.data.object as any;
+        const invoice = event.data.object as unknown as { id: string; subscription: string | null; period_end: number };
         console.log('Payment succeeded for invoice:', invoice.id);
 
         if (invoice.subscription) {
           await updateSubscriptionStatus(
-            invoice.subscription as string,
+            invoice.subscription,
             'active',
             new Date(invoice.period_end * 1000)
           );
@@ -147,10 +147,10 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ received: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Webhook handler error:', error);
     return NextResponse.json(
-      { error: error.message || 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     );
   }

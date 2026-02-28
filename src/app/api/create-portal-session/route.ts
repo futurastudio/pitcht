@@ -82,7 +82,7 @@ export async function POST(request: Request) {
     // Verify the customer exists in Stripe before creating portal session
     try {
       await stripe.customers.retrieve(subscription.stripe_customer_id);
-    } catch (stripeError: any) {
+    } catch (stripeError: unknown) {
       console.error('Stripe customer not found:', stripeError);
       return NextResponse.json(
         {
@@ -100,10 +100,10 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ url: portalSession.url });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating portal session:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to create portal session' },
+      { error: error instanceof Error ? error.message : 'Failed to create portal session' },
       { status: 500 }
     );
   }
