@@ -155,7 +155,7 @@ export default function Header() {
               onClick={() => setShowSignup(true)}
               className="px-4 py-2 bg-white/10 backdrop-blur-xl border border-white/20 rounded-full text-white hover:bg-white/20 transition-all text-sm font-medium"
             >
-              Start Free Trial
+              Sign Up Free
             </button>
             )}
           </div>

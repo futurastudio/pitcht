@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/utils/api';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -11,8 +11,35 @@ import { toast } from 'sonner';
 
 export default function PricingPage() {
   const router = useRouter();
-  const { user, subscriptionStatus } = useAuth();
+  const { user, subscriptionStatus, refreshSubscriptionStatus } = useAuth();
   const [isLoading, setIsLoading] = useState<string | null>(null);
+
+  // When the user returns to this page/window after visiting Stripe (especially
+  // in Electron where the app stays open while Stripe opens in the system browser),
+  // clear the loading state and refresh the subscription so the UI updates correctly.
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isLoading) {
+        setIsLoading(null);
+      }
+      // Always re-check subscription on focus — user may have just paid
+      if (user) {
+        refreshSubscriptionStatus();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    // Also handle Next.js route focus (visibilitychange covers tab switches)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') handleFocus();
+    });
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, user]);
 
   const handleSubscribe = async (priceId: string, _planName: string) => {
     if (!user) {
