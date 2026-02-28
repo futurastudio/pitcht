@@ -40,7 +40,8 @@ export type SmsMessageTrigger =
   | 'inactivity_nudge'
   | 'weekly_recap'
   | 'score_milestone'
-  | 'score_decline';
+  | 'score_decline'
+  | 'ai_reply';
 
 // ─── Data Fetching ─────────────────────────────────────────────────────────────
 
@@ -289,6 +290,244 @@ export function isWithinSendWindow(timezone: string): boolean {
     return hour >= 9 && hour < 20; // 9 AM to 8 PM
   } catch {
     return false; // Default to NOT allowed — never text outside window on bad timezone
+  }
+}
+
+// ─── Phase 2: AI Agent Context ─────────────────────────────────────────────────
+
+export interface SmsAgentSession {
+  sessionType: string;
+  context: string | null;        // job description / sales context
+  createdAt: string;
+  overallScore: number | null;
+  clarityScore: number | null;
+  pacingScore: number | null;
+  eyeContactPercentage: number | null;
+  fillerWordCount: number | null;
+  questions: Array<{
+    text: string;
+    transcript: string | null;
+    overallScore: number | null;
+  }>;
+}
+
+export interface SmsConversationMessage {
+  direction: 'inbound' | 'outbound';
+  message: string;
+  sentAt: string;
+}
+
+/**
+ * Load the last 3 sessions with question transcripts and scores for a user.
+ * Used to give the Claude SMS agent real context about the user's performance.
+ */
+export async function getSmsAgentContext(userId: string): Promise<SmsAgentSession[]> {
+  const supabase = getSupabaseAdmin();
+
+  // Fetch last 3 sessions
+  const { data: sessions, error: sessionsError } = await supabase
+    .from('sessions')
+    .select('id, session_type, context, created_at')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(3);
+
+  if (sessionsError || !sessions || sessions.length === 0) return [];
+
+  const result: SmsAgentSession[] = [];
+
+  for (const session of sessions) {
+    // Fetch questions for this session
+    const { data: questions } = await supabase
+      .from('questions')
+      .select('id, text')
+      .eq('session_id', session.id)
+      .order('created_at', { ascending: true });
+
+    // Fetch recordings for this session (one per question)
+    const { data: recordings } = await supabase
+      .from('recordings')
+      .select('question_id, transcript, overall_score, clarity_score, pacing_score, eye_contact_percentage, filler_word_count')
+      .eq('session_id', session.id)
+      .order('created_at', { ascending: true });
+
+    // Map recordings by question_id for easy lookup
+    interface RecordingRow {
+      question_id: string | null;
+      transcript: string | null;
+      overall_score: number | null;
+      clarity_score: number | null;
+      pacing_score: number | null;
+      eye_contact_percentage: number | null;
+      filler_word_count: number | null;
+    }
+    const recordingMap: Record<string, RecordingRow> = {};
+    if (recordings) {
+      for (const rec of recordings as RecordingRow[]) {
+        if (rec.question_id) recordingMap[rec.question_id] = rec;
+      }
+    }
+
+    // Pick the "best" recording for session-level metrics (highest overall_score)
+    const bestRecording = (recordings as RecordingRow[] | null)?.sort(
+      (a, b) => (b.overall_score ?? 0) - (a.overall_score ?? 0)
+    )[0] ?? null;
+
+    result.push({
+      sessionType: session.session_type,
+      context: session.context ?? null,
+      createdAt: session.created_at,
+      overallScore: bestRecording?.overall_score ?? null,
+      clarityScore: bestRecording?.clarity_score ?? null,
+      pacingScore: bestRecording?.pacing_score ?? null,
+      eyeContactPercentage: bestRecording?.eye_contact_percentage ?? null,
+      fillerWordCount: bestRecording?.filler_word_count ?? null,
+      questions: (questions ?? []).map(q => {
+        const rec = recordingMap[q.id];
+        return {
+          text: q.text,
+          transcript: rec?.transcript ?? null,
+          overallScore: rec?.overall_score ?? null,
+        };
+      }),
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Fetch the last N messages (inbound + outbound) for a phone number,
+ * to give Claude conversation history so replies feel coherent.
+ */
+export async function getConversationHistory(
+  phoneNumber: string,
+  limit = 10
+): Promise<SmsConversationMessage[]> {
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from('sms_messages')
+    .select('direction, message, sent_at')
+    .eq('phone_number', phoneNumber)
+    .order('sent_at', { ascending: false })
+    .limit(limit);
+
+  if (error || !data) return [];
+
+  // Return in chronological order (oldest first) for natural conversation context
+  return data
+    .reverse()
+    .map(row => ({
+      direction: row.direction as 'inbound' | 'outbound',
+      message: row.message,
+      sentAt: row.sent_at,
+    }));
+}
+
+/**
+ * Count how many AI (Claude) replies have been sent to a user today.
+ * Used for rate limiting: max 3 AI replies per user per calendar day.
+ */
+export async function getAiRepliesCountToday(
+  userId: string,
+  timezone: string
+): Promise<number> {
+  const supabase = getSupabaseAdmin();
+
+  // Compute start of today in user's local timezone
+  let localTodayStart: Date;
+  try {
+    const localDateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+    localTodayStart = new Date(`${localDateStr}T00:00:00Z`);
+  } catch {
+    const d = new Date();
+    d.setUTCHours(0, 0, 0, 0);
+    localTodayStart = d;
+  }
+
+  const { count, error } = await supabase
+    .from('sms_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('direction', 'outbound')
+    .eq('trigger', 'ai_reply')
+    .gte('sent_at', localTodayStart.toISOString());
+
+  if (error) return 0;
+  return count ?? 0;
+}
+
+/**
+ * Log an inbound message from a user to the sms_messages table.
+ */
+export async function logInboundMessage(
+  userId: string,
+  phoneNumber: string,
+  message: string,
+  twilioSid?: string
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  await supabase.from('sms_messages').insert({
+    user_id: userId,
+    phone_number: phoneNumber,
+    direction: 'inbound',
+    message,
+    twilio_sid: twilioSid ?? null,
+    trigger: null,
+    status: 'received',
+  });
+}
+
+/**
+ * Send an AI-generated SMS reply and log it as trigger='ai_reply'.
+ */
+export async function sendAiReply(
+  userId: string,
+  phoneNumber: string,
+  message: string
+): Promise<boolean> {
+  if (!message) return false;
+
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  const fromNumber = process.env.TWILIO_PHONE_NUMBER;
+
+  if (!accountSid || !authToken || !fromNumber) {
+    console.error('SMS AI reply: Missing Twilio environment variables');
+    return false;
+  }
+
+  try {
+    const twilio = (await import('twilio')).default;
+    const client = twilio(accountSid, authToken);
+
+    const msg = await client.messages.create({
+      body: message,
+      from: fromNumber,
+      to: phoneNumber,
+    });
+
+    const supabase = getSupabaseAdmin();
+    await supabase.from('sms_messages').insert({
+      user_id: userId,
+      phone_number: phoneNumber,
+      direction: 'outbound',
+      message,
+      twilio_sid: msg.sid,
+      trigger: 'ai_reply',
+      status: 'sent',
+    });
+
+    return true;
+  } catch (err) {
+    console.error('SMS AI reply send failed:', err);
+    return false;
   }
 }
 

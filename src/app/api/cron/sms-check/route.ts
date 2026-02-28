@@ -69,16 +69,39 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         continue;
       }
 
-      // Check if we already sent this user a message today (UTC date boundary)
-      const todayStart = new Date();
-      todayStart.setUTCHours(0, 0, 0, 0);
+      // Check if we already sent this user a message today using their LOCAL calendar date.
+      // The cron now runs 4x/day — without this fix a user at UTC-10 could be texted just
+      // after midnight UTC (which is still "yesterday" in their timezone).
+      //
+      // Strategy: derive the start of "today" in the user's timezone by formatting the
+      // current UTC instant as a YYYY-MM-DD string in their local tz, then converting
+      // that date back to a UTC ISO string. Any outbound message with sent_at ≥ that
+      // value means we've already texted them today.
+      let localTodayStart: Date;
+      try {
+        // e.g. "2025-02-28" for the user's current calendar date
+        const localDateStr = new Intl.DateTimeFormat('en-CA', {
+          timeZone: user.timezone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+        }).format(new Date()); // "YYYY-MM-DD" format
+
+        // Reparse as midnight UTC of that local date for the DB query threshold
+        localTodayStart = new Date(`${localDateStr}T00:00:00Z`);
+      } catch {
+        // Fallback: use UTC midnight if timezone parsing fails
+        const todayStart = new Date();
+        todayStart.setUTCHours(0, 0, 0, 0);
+        localTodayStart = todayStart;
+      }
 
       const { data: todayMessages } = await supabase
         .from('sms_messages')
         .select('id')
         .eq('user_id', user.user_id)
         .eq('direction', 'outbound')
-        .gte('sent_at', todayStart.toISOString())
+        .gte('sent_at', localTodayStart.toISOString())
         .limit(1);
 
       if (todayMessages && todayMessages.length > 0) {
