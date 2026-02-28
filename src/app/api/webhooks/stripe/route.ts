@@ -6,7 +6,11 @@ import {
   updateSubscriptionStatus,
 } from '@/services/subscriptionManager';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+export const maxDuration = 30;
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  maxNetworkRetries: 1,
+});
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 

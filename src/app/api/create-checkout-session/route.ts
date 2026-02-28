@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
+// Extend Vercel function timeout beyond the default 10s.
+// Stripe calls can take 3-5s on cold starts; with 2 retries that exceeds 10s.
+export const maxDuration = 30;
+
 // Validate required env vars at module load time so misconfiguration is
 // immediately visible in Vercel Function logs rather than as a cryptic Stripe error.
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
@@ -19,7 +23,12 @@ if (!APP_URL) {
   console.warn('[create-checkout-session] WARNING: NEXT_PUBLIC_URL is not set — success/cancel URLs will be broken');
 }
 
-const stripe = new Stripe(STRIPE_SECRET_KEY ?? '');
+// maxNetworkRetries: 1 (not 0) — allow one retry for transient errors,
+// but the default of 2 retries × ~4s each = 12s+ which exceeds Vercel's
+// default 10s timeout, causing StripeConnectionError on cold starts.
+const stripe = new Stripe(STRIPE_SECRET_KEY ?? '', {
+  maxNetworkRetries: 1,
+});
 
 const supabase = createClient(
   SUPABASE_URL!,
