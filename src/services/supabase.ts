@@ -15,8 +15,25 @@ if (!supabaseUrl || !supabaseAnonKey) {
 /**
  * Supabase client (uses anon key + RLS for security)
  * Safe to use on client-side - RLS policies protect data
+ *
+ * detectSessionInUrl: false — OAuth redirects are handled server-side at
+ * /auth/callback. Leaving this true (the default) causes Supabase to inspect
+ * every URL for auth tokens, which can misfire on Stripe return URLs that
+ * contain query params like ?session_id=... and trigger spurious SIGNED_OUT events.
+ *
+ * persistSession: true — keeps the session in localStorage so returning from
+ * an external domain (Stripe checkout) does not log the user out.
+ *
+ * autoRefreshToken: true — silently refreshes the JWT before it expires so
+ * users are never kicked out mid-session.
  */
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: false,
+  },
+});
 
 /**
  * Upload video to Supabase Storage

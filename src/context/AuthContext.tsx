@@ -148,19 +148,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signUp = async (email: string, password: string) => {
-    // Calculate 5-day trial period
-    const trialStart = new Date();
-    const trialEnd = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
-
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: {
-          trial_start: trialStart.toISOString(),
-          trial_end: trialEnd.toISOString(),
-        },
-      },
     });
 
     if (error) throw error;
