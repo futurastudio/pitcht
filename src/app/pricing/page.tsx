@@ -83,7 +83,7 @@ export default function PricingPage() {
             Simple, Transparent Pricing
           </h1>
           <p className="text-white/60 text-lg max-w-2xl mx-auto">
-            Start with a 7-day free trial. No credit card required. Cancel anytime.
+            Start with a 5-day free trial. No credit card required. Cancel anytime.
           </p>
         </div>
 
@@ -103,15 +103,15 @@ export default function PricingPage() {
               <div className="flex items-start gap-3">
                 <span className="text-green-400 mt-1">✓</span>
                 <div>
-                  <p className="text-white font-medium">7-day trial</p>
+                  <p className="text-white font-medium">5-day trial</p>
                   <p className="text-white/50 text-sm">Full access to all features</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
                 <span className="text-green-400 mt-1">✓</span>
                 <div>
-                  <p className="text-white font-medium">1 session per month</p>
-                  <p className="text-white/50 text-sm">After trial ends</p>
+                  <p className="text-white font-medium">1 session included</p>
+                  <p className="text-white/50 text-sm">Use it anytime during your trial</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
@@ -149,10 +149,10 @@ export default function PricingPage() {
           </div>
 
           {/* Premium Monthly */}
-          <div className="bg-gradient-to-br from-purple-500/20 to-blue-500/20 backdrop-blur-xl border border-purple-400/30 rounded-3xl p-8 relative shadow-2xl">
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 relative shadow-2xl">
             {/* Popular Badge */}
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-              <span className="bg-gradient-to-r from-purple-500 to-blue-500 text-white px-4 py-1 rounded-full text-sm font-semibold">
+              <span className="bg-white/20 backdrop-blur-sm border border-white/30 text-white px-4 py-1 rounded-full text-sm font-semibold">
                 Most Popular
               </span>
             </div>
@@ -167,38 +167,38 @@ export default function PricingPage() {
 
             <div className="space-y-4 mb-8">
               <div className="flex items-start gap-3">
-                <span className="text-purple-400 mt-1">✓</span>
+                <span className="text-green-400 mt-1">✓</span>
                 <div>
-                  <p className="text-white font-medium">UNLIMITED sessions</p>
+                  <p className="text-white font-medium">Unlimited sessions</p>
                   <p className="text-white/50 text-sm">Practice as much as you need</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <span className="text-purple-400 mt-1">✓</span>
+                <span className="text-green-400 mt-1">✓</span>
                 <div>
                   <p className="text-white font-medium">Full session history</p>
                   <p className="text-white/50 text-sm">Review all past recordings</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <span className="text-purple-400 mt-1">✓</span>
+                <span className="text-green-400 mt-1">✓</span>
                 <div>
                   <p className="text-white font-medium">Progress tracking</p>
-                  <p className="text-white/50 text-sm">Charts & improvement trends</p>
+                  <p className="text-white/50 text-sm">See improvement trends over time</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <span className="text-purple-400 mt-1">✓</span>
+                <span className="text-green-400 mt-1">✓</span>
                 <div>
-                  <p className="text-white font-medium">Advanced analytics</p>
-                  <p className="text-white/50 text-sm">Deep performance insights</p>
+                  <p className="text-white font-medium">Eye contact & speech metrics</p>
+                  <p className="text-white/50 text-sm">Every session, every answer</p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
-                <span className="text-purple-400 mt-1">✓</span>
+                <span className="text-green-400 mt-1">✓</span>
                 <div>
-                  <p className="text-white font-medium">Priority support</p>
-                  <p className="text-white/50 text-sm">Get help when you need it</p>
+                  <p className="text-white font-medium">AI coaching on your answers</p>
+                  <p className="text-white/50 text-sm">Tailored to your job description</p>
                 </div>
               </div>
             </div>
@@ -216,14 +216,14 @@ export default function PricingPage() {
                   )
                 }
                 disabled={isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY}
-                className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 active:from-purple-700 active:to-blue-700 transition-all duration-200 py-3 rounded-full font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-white text-black hover:bg-white/90 active:bg-white/80 transition-all duration-200 py-3 rounded-full font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY
                   ? 'Loading...'
                   : !user
-                  ? 'Start 7-Day Free Trial'
+                  ? 'Start 5-Day Free Trial'
                   : subscriptionStatus.isTrialing
-                  ? 'Subscribe Now'
+                  ? 'Upgrade to Pro'
                   : 'Get Pro'}
               </button>
             )}
@@ -262,7 +262,7 @@ export default function PricingPage() {
                       )
                     }
                     disabled={isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL}
-                    className="px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 active:from-green-700 active:to-emerald-700 transition-all duration-200 rounded-full font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                    className="px-8 py-3 bg-white text-black hover:bg-white/90 active:bg-white/80 transition-all duration-200 rounded-full font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                   >
                     {isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL
                       ? 'Loading...'
@@ -287,7 +287,7 @@ export default function PricingPage() {
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
               <h3 className="text-white font-semibold mb-2">What happens after the trial?</h3>
               <p className="text-white/60 text-sm">
-                If you don't subscribe, you'll automatically switch to the free plan (1 session per month). Your data is never deleted.
+                Your trial session stays in your history. You can upgrade anytime to keep practicing. Your data is never deleted.
               </p>
             </div>
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
