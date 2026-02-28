@@ -130,11 +130,12 @@ export async function POST(request: Request) {
 
       console.log(`📝 Creating subscription in database for user: ${userId}`);
 
-      // Create subscription in database (using admin client to bypass RLS)
-      // Note: Using bracket notation to access properties that exist at runtime but may not be in TypeScript types
-      const subscriptionData = subscription as unknown as { current_period_start: number; current_period_end: number };
+      // Create subscription in database (using admin client to bypass RLS).
       // Use upsert so this is idempotent — if the webhook already created the row,
       // this updates it rather than crashing with a duplicate key error.
+      // NOTE: In Stripe SDK v20, current_period_start/end moved from the top-level
+      // subscription object to items.data[0] — always read from there.
+      const item = subscription.items.data[0] as unknown as { current_period_start: number; current_period_end: number };
       const { data: newSubscription, error: insertError } = await supabaseAdmin
         .from('subscriptions')
         .upsert(
@@ -144,8 +145,8 @@ export async function POST(request: Request) {
             stripe_customer_id: customerId,
             stripe_price_id: priceId,
             status: subscription.status,
-            current_period_start: new Date(subscriptionData.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscriptionData.current_period_end * 1000).toISOString(),
+            current_period_start: new Date(item.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(item.current_period_end * 1000).toISOString(),
             updated_at: new Date().toISOString(),
           },
           { onConflict: 'stripe_subscription_id' }

@@ -72,12 +72,14 @@ export async function POST(request: Request) {
           break;
         }
 
-        // Get the price ID and billing period from the subscription
+        // Get the price ID and billing period from the subscription.
+        // NOTE: In Stripe SDK v20, current_period_start/end moved from the
+        // top-level subscription object to items.data[0] — always read from there.
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const priceId = subscription.items.data[0].price.id;
-        const subData = subscription as unknown as { current_period_start: number; current_period_end: number };
-        const periodStart = new Date(subData.current_period_start * 1000);
-        const periodEnd = new Date(subData.current_period_end * 1000);
+        const item = subscription.items.data[0] as unknown as { current_period_start: number; current_period_end: number };
+        const periodStart = new Date(item.current_period_start * 1000);
+        const periodEnd = new Date(item.current_period_end * 1000);
 
         // Create/upsert subscription in database (idempotent — safe if verify-subscription ran first)
         await createPremiumSubscription(
@@ -97,10 +99,12 @@ export async function POST(request: Request) {
         const subscription = event.data.object as Stripe.Subscription;
         console.log('Subscription updated:', subscription.id);
 
+        // In Stripe SDK v20, current_period_end lives on items.data[0], not the top-level object.
+        const updatedItem = subscription.items.data[0] as unknown as { current_period_end: number };
         await updateSubscriptionStatus(
           subscription.id,
           subscription.status as 'active' | 'canceled' | 'past_due' | 'trialing',
-          new Date((subscription as unknown as { current_period_end: number }).current_period_end * 1000)
+          new Date(updatedItem.current_period_end * 1000)
         );
 
         console.log(`✅ Subscription updated: ${subscription.id} → ${subscription.status}`);
