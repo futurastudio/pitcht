@@ -14,29 +14,31 @@ export default function PricingPage() {
   const { user, subscriptionStatus, refreshSubscriptionStatus } = useAuth();
   const [isLoading, setIsLoading] = useState<string | null>(null);
 
-  // When the user returns to this page/window after visiting Stripe (especially
-  // in Electron where the app stays open while Stripe opens in the system browser),
-  // clear the loading state and refresh the subscription so the UI updates correctly.
+  // Refresh subscription on every mount so the page always reflects the real
+  // account state — whether the user just paid, just cancelled, or came back
+  // to check pricing again.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (user) refreshSubscriptionStatus();
+  }, []);
+
+  // When the window regains focus (Electron: user returns from system browser
+  // after visiting Stripe), clear the stuck loading state and re-check status.
   useEffect(() => {
     const handleFocus = () => {
-      if (isLoading) {
-        setIsLoading(null);
-      }
-      // Always re-check subscription on focus — user may have just paid
-      if (user) {
-        refreshSubscriptionStatus();
-      }
+      if (isLoading) setIsLoading(null);
+      if (user) refreshSubscriptionStatus();
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') handleFocus();
     };
 
     window.addEventListener('focus', handleFocus);
-    // Also handle Next.js route focus (visibilitychange covers tab switches)
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') handleFocus();
-    });
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, user]);

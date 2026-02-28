@@ -37,15 +37,17 @@ export default function Dashboard() {
 
   const { user, subscriptionStatus, refreshSubscriptionStatus } = useAuth();
 
-  // Refresh subscription status every time the home page is visited so the
-  // paywall banner always reflects the current session count — not stale
-  // cached state from login (e.g. user just completed their free session and
-  // navigated back without restarting the app).
+  // Refresh subscription status on every mount of the home page so the
+  // state is always accurate regardless of how the user arrived here:
+  // - returning from Stripe after paying → should show Pro
+  // - returning from Stripe after cancelling → should still show free tier
+  // - completing their free session and navigating back → should show paywall
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (user) {
       refreshSubscriptionStatus();
     }
-  }, [user]);
+  }, []);
 
   const isExhaustedFreeUser = user && !subscriptionStatus.isPremium && !subscriptionStatus.isTrialing && !subscriptionStatus.canStartSession;
 

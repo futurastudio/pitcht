@@ -61,27 +61,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (event === 'SIGNED_OUT') {
         setUser(null);
+        setSubscriptionStatus({
+          isPremium: false,
+          isTrialing: false,
+          trialEndsAt: null,
+          sessionsThisMonth: 0,
+          canStartSession: true,
+        });
       } else if (session?.user) {
         // SIGNED_IN, INITIAL_SESSION, TOKEN_REFRESHED, USER_UPDATED, PASSWORD_RECOVERY
         setUser(session.user);
+        // On explicit sign-in or initial session load, immediately fetch the real
+        // subscription state from DB using the user ID we have right now —
+        // before setUser()'s async state update propagates to refreshSubscriptionStatus().
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+          refreshSubscriptionStatus(session.user.id);
+        }
       }
-      // If event is TOKEN_REFRESHED but session is somehow null, do NOT clear user.
-      // This prevents an edge-case race condition where a mid-flight token refresh
-      // temporarily returns a null session and logs the user out visually.
+      // If TOKEN_REFRESHED but session is somehow null, do NOT clear user.
+      // This prevents a mid-flight token refresh from logging the user out visually.
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  const refreshSubscriptionStatus = async () => {
-    if (!user) return;
+  // Accept an optional explicit userId so this can be called from onAuthStateChange
+  // before the setUser() state update has propagated (React state is async).
+  const refreshSubscriptionStatus = async (forUserId?: string) => {
+    const uid = forUserId ?? user?.id;
+    if (!uid) return;
 
     try {
       // Check for active OR trialing premium subscription
       const { data: subscriptions, error } = await supabase
         .from('subscriptions')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', uid)
         .in('status', ['active', 'trialing'])
         .order('created_at', { ascending: false })
         .limit(1);
@@ -110,7 +125,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { count } = await supabase
         .from('sessions')
         .select('*', { count: 'exact', head: true })
-        .eq('user_id', user.id)
+        .eq('user_id', uid)
         .eq('status', 'completed');
 
       const sessionsTotal = count || 0;
