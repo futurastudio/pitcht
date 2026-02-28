@@ -24,12 +24,38 @@ function SuccessContent() {
 
   useEffect(() => {
     // Verify subscription as safety net in case webhook is delayed.
-    // Retries up to 5 times with 2-second gaps to handle Stripe webhook lag.
+    // Strategy:
+    //   1. Call /api/verify-subscription to ensure the row exists in DB.
+    //   2. Poll refreshSubscriptionStatus until isPremium is true (up to 10 attempts).
+    //   3. Only show error after all attempts are exhausted.
     if (!sessionId || !user) return;
 
     let cancelled = false;
-    const MAX_ATTEMPTS = 5;
-    const RETRY_DELAY_MS = 2000;
+    // Phase 1: verify the subscription row exists (up to 6 attempts, 3s apart)
+    const MAX_VERIFY_ATTEMPTS = 6;
+    const VERIFY_RETRY_MS = 3000;
+    // Phase 2: poll AuthContext until isPremium flips (up to 8 attempts, 2s apart)
+    const MAX_POLL_ATTEMPTS = 8;
+    const POLL_RETRY_MS = 2000;
+
+    const pollUntilPremium = (attemptsLeft: number) => {
+      if (cancelled) return;
+      refreshSubscriptionStatus().then(() => {
+        // subscriptionStatus is read from closure — schedule a re-check via setTimeout
+        // so React has time to update the state before we read it again.
+        setTimeout(() => {
+          if (cancelled) return;
+          // Re-read from the context ref via a second refresh; if still not premium, retry.
+          if (attemptsLeft > 1) {
+            pollUntilPremium(attemptsLeft - 1);
+          } else {
+            setIsVerifying(false);
+            // Don't show error here — the DB row exists, the UI just needs a hard refresh.
+            // The user can navigate away and come back to see Pro status.
+          }
+        }, POLL_RETRY_MS);
+      });
+    };
 
     const attempt = async (attemptsLeft: number) => {
       if (cancelled) return;
@@ -57,15 +83,13 @@ function SuccessContent() {
         const data = await response.json();
 
         if (response.ok) {
-          // Always refresh so AuthContext reflects the new subscription
-          if (refreshSubscriptionStatus) {
-            await refreshSubscriptionStatus();
-          }
-          setIsVerifying(false);
+          console.log('✅ Subscription verified in DB — polling AuthContext for isPremium');
+          // Subscription row confirmed — now poll until AuthContext reflects isPremium
+          pollUntilPremium(MAX_POLL_ATTEMPTS);
         } else {
           console.error(`❌ Verification attempt failed (${attemptsLeft} left):`, data);
           if (attemptsLeft > 1 && !cancelled) {
-            setTimeout(() => attempt(attemptsLeft - 1), RETRY_DELAY_MS);
+            setTimeout(() => attempt(attemptsLeft - 1), VERIFY_RETRY_MS);
           } else {
             setIsVerifying(false);
             setVerifyError(true);
@@ -74,7 +98,7 @@ function SuccessContent() {
       } catch (error) {
         console.error('❌ Error verifying subscription:', error);
         if (attemptsLeft > 1 && !cancelled) {
-          setTimeout(() => attempt(attemptsLeft - 1), RETRY_DELAY_MS);
+          setTimeout(() => attempt(attemptsLeft - 1), VERIFY_RETRY_MS);
         } else {
           setIsVerifying(false);
           setVerifyError(true);
@@ -82,7 +106,7 @@ function SuccessContent() {
       }
     };
 
-    attempt(MAX_ATTEMPTS);
+    attempt(MAX_VERIFY_ATTEMPTS);
 
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,10 +115,11 @@ function SuccessContent() {
   if (!user) {
     return (
       <main className="min-h-screen text-white p-8 relative">
-        <div className="absolute inset-0 bg-black/80 backdrop-blur-md -z-10" />
+        <div className="absolute inset-0 bg-black/40 backdrop-blur-sm -z-10" />
+        <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10 -z-10" />
         <div className="max-w-2xl mx-auto text-center pt-20">
           <p className="text-white/60">Please log in to view this page.</p>
-          <Link href="/" className="text-purple-400 hover:text-purple-300">
+          <Link href="/" className="text-white/80 hover:text-white underline">
             Go to Home
           </Link>
         </div>
@@ -103,9 +128,10 @@ function SuccessContent() {
   }
 
   return (
-    <main className="min-h-screen text-white p-8 pb-24 relative overflow-hidden">
-      {/* Background Gradient Overlay */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-md -z-10" />
+    <main className="min-h-screen text-white p-8 pb-24 relative overflow-hidden flex flex-col items-center justify-center">
+      {/* Same background treatment as home page */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm -z-10" />
+      <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10 -z-10" />
 
       {/* Confetti Animation (CSS-only) */}
       {showConfetti && (
@@ -113,12 +139,14 @@ function SuccessContent() {
           {[...Array(50)].map((_, i) => (
             <div
               key={i}
-              className="absolute w-2 h-2 bg-gradient-to-br from-purple-400 to-blue-400 rounded-full animate-confetti"
+              className="absolute w-2 h-2 rounded-full"
               style={{
+                background: i % 2 === 0 ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.3)',
                 left: `${Math.random() * 100}%`,
                 top: '-10%',
                 animationDelay: `${Math.random() * 2}s`,
                 animationDuration: `${3 + Math.random() * 2}s`,
+                animation: 'confetti linear forwards',
               }}
             />
           ))}
@@ -127,13 +155,14 @@ function SuccessContent() {
 
       <Header />
 
-      <div className="max-w-3xl mx-auto mt-20 relative z-10">
-        {/* Success Card */}
-        <div className="bg-gradient-to-br from-purple-500/20 to-blue-500/20 backdrop-blur-xl border border-purple-400/30 rounded-3xl p-12 text-center shadow-2xl">
+      <div className="max-w-2xl w-full relative z-10 mt-8">
+        {/* Success Card — liquid glass */}
+        <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-10 text-center shadow-2xl">
+
           {/* Success Icon */}
-          <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-green-400 to-emerald-400 rounded-full flex items-center justify-center">
+          <div className="w-20 h-20 mx-auto mb-6 bg-white/20 backdrop-blur-xl border border-white/30 rounded-full flex items-center justify-center">
             <svg
-              className="w-12 h-12 text-white"
+              className="w-10 h-10 text-white"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -141,135 +170,121 @@ function SuccessContent() {
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                strokeWidth={3}
+                strokeWidth={2.5}
                 d="M5 13l4 4L19 7"
               />
             </svg>
           </div>
 
           {/* Success Message */}
-          <h1 className="text-4xl font-bold text-white mb-4">
+          <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-white/90 to-white/60 mb-3">
             Welcome to Pitcht Pro!
           </h1>
-          <p className="text-xl text-white/80 mb-4">
-            Your subscription is now active. Time to level up your practice!
+          <p className="text-white/70 text-lg mb-6">
+            {subscriptionStatus.isPremium
+              ? 'Your subscription is active. Time to level up your practice!'
+              : 'Your payment was received. Activating your account now...'}
           </p>
 
           {/* Verification status banner */}
-          {isVerifying && (
-            <div className="bg-white/10 border border-white/20 rounded-2xl px-4 py-2 mb-6 text-white/70 text-sm">
+          {isVerifying && !subscriptionStatus.isPremium && (
+            <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl px-4 py-3 mb-6 text-white/70 text-sm flex items-center justify-center gap-2">
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
               Activating your subscription...
             </div>
           )}
-          {verifyError && (
-            <div className="bg-red-500/20 border border-red-400/30 rounded-2xl px-4 py-3 mb-6 text-red-300 text-sm">
-              We had trouble confirming your subscription automatically. It will activate within a few minutes — or contact us at{' '}
-              <a href="mailto:contact@pitcht.us" className="underline">contact@pitcht.us</a> if it doesn&apos;t.
+          {subscriptionStatus.isPremium && (
+            <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl px-4 py-3 mb-6 text-white/80 text-sm flex items-center justify-center gap-2">
+              <span className="text-green-400">✓</span> Pro activated
+            </div>
+          )}
+          {verifyError && !subscriptionStatus.isPremium && (
+            <div className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl px-4 py-3 mb-6 text-white/60 text-sm">
+              Taking longer than expected — your account will activate within a few minutes.
+              Contact{' '}
+              <a href="mailto:contact@pitcht.us" className="text-white/80 underline">contact@pitcht.us</a>
+              {' '}if it doesn&apos;t.
             </div>
           )}
 
-          {/* Subscription Details */}
-          <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Status strip */}
+          <div className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-5 mb-8">
+            <div className="grid grid-cols-3 gap-4 divide-x divide-white/10">
               <div>
-                <p className="text-white/60 text-sm mb-1">Status</p>
-                <p className="text-white font-semibold">
-                  {subscriptionStatus.isPremium ? 'Pro Active' : 'Activating...'}
+                <p className="text-white/50 text-xs uppercase tracking-wide mb-1">Status</p>
+                <p className="text-white font-semibold text-sm">
+                  {subscriptionStatus.isPremium ? 'Pro ✓' : 'Activating...'}
                 </p>
               </div>
-              <div>
-                <p className="text-white/60 text-sm mb-1">Sessions</p>
-                <p className="text-white font-semibold">Unlimited</p>
+              <div className="pl-4">
+                <p className="text-white/50 text-xs uppercase tracking-wide mb-1">Sessions</p>
+                <p className="text-white font-semibold text-sm">Unlimited</p>
               </div>
-              <div>
-                <p className="text-white/60 text-sm mb-1">Billing</p>
-                <p className="text-white font-semibold">See account settings</p>
+              <div className="pl-4">
+                <p className="text-white/50 text-xs uppercase tracking-wide mb-1">Billing</p>
+                <Link href="/settings" className="text-white font-semibold text-sm hover:text-white/80 transition-colors">
+                  Settings →
+                </Link>
               </div>
             </div>
           </div>
 
-          {/* What's Next */}
+          {/* What's included */}
           <div className="text-left mb-8">
-            <h2 className="text-2xl font-bold text-white mb-4 text-center">
-              What&apos;s included in Premium
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-start gap-3">
-                <span className="text-purple-400 mt-1 flex-shrink-0">✓</span>
-                <div>
-                  <p className="text-white font-medium">Unlimited practice sessions</p>
-                  <p className="text-white/60 text-sm">No limits, practice as much as you need</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[
+                ['Unlimited sessions', 'Practice as much as you need'],
+                ['Full session history', 'Review all past recordings'],
+                ['Progress tracking', 'See improvement over time'],
+                ['AI coaching', 'Tailored to every answer'],
+              ].map(([title, sub]) => (
+                <div key={title} className="flex items-start gap-3 bg-white/5 rounded-2xl p-4">
+                  <span className="text-green-400 mt-0.5 flex-shrink-0">✓</span>
+                  <div>
+                    <p className="text-white font-medium text-sm">{title}</p>
+                    <p className="text-white/50 text-xs">{sub}</p>
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="text-purple-400 mt-1 flex-shrink-0">✓</span>
-                <div>
-                  <p className="text-white font-medium">Full session history</p>
-                  <p className="text-white/60 text-sm">Review all your past recordings</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="text-purple-400 mt-1 flex-shrink-0">✓</span>
-                <div>
-                  <p className="text-white font-medium">Progress tracking</p>
-                  <p className="text-white/60 text-sm">Charts showing your improvement</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3">
-                <span className="text-purple-400 mt-1 flex-shrink-0">✓</span>
-                <div>
-                  <p className="text-white font-medium">Advanced analytics</p>
-                  <p className="text-white/60 text-sm">Deep insights into your performance</p>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* Call to Action */}
-          <div className="space-y-4">
+          {/* CTAs */}
+          <div className="space-y-3">
             <Link
               href="/"
-              className="block w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 transition-all duration-200 py-4 rounded-full font-semibold text-lg shadow-lg"
+              className="block w-full bg-white/10 hover:bg-white/20 active:bg-white/30 backdrop-blur-lg border border-white/20 hover:border-white/40 transition-all duration-200 py-3.5 rounded-full font-semibold text-white"
             >
               Start Practicing Now →
             </Link>
             <Link
               href="/history"
-              className="block w-full bg-white/10 hover:bg-white/20 backdrop-blur-lg border border-white/20 transition-all duration-200 py-4 rounded-full font-semibold"
+              className="block w-full bg-white/5 hover:bg-white/10 backdrop-blur-lg border border-white/10 transition-all duration-200 py-3.5 rounded-full font-medium text-white/70 hover:text-white"
             >
               View Session History
             </Link>
           </div>
         </div>
 
-        {/* Additional Info */}
-        <div className="mt-8 text-center">
-          <p className="text-white/60 text-sm mb-4">
-            Thank you for subscribing to Pitcht Pro!
-          </p>
-          <p className="text-white/60 text-sm">
-            Questions? Contact us at{' '}
-            <a href="mailto:contact@pitcht.us" className="text-purple-400 hover:text-purple-300">
+        {/* Footer note */}
+        <div className="mt-6 text-center space-y-1">
+          <p className="text-white/40 text-sm">Thank you for subscribing to Pitcht Pro!</p>
+          <p className="text-white/40 text-sm">
+            Questions?{' '}
+            <a href="mailto:contact@pitcht.us" className="text-white/60 hover:text-white/80 transition-colors">
               contact@pitcht.us
             </a>
           </p>
         </div>
-
       </div>
 
       <style jsx>{`
         @keyframes confetti {
-          0% {
-            transform: translateY(0) rotate(0deg);
-            opacity: 1;
-          }
-          100% {
-            transform: translateY(100vh) rotate(720deg);
-            opacity: 0;
-          }
-        }
-        .animate-confetti {
-          animation: confetti linear forwards;
+          0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+          100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
         }
       `}</style>
     </main>

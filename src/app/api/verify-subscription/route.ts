@@ -62,11 +62,16 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if subscription already exists in database (using admin client)
+    // Check if an active or trialing subscription already exists in database.
+    // IMPORTANT: filter by status — a cancelled row must NOT short-circuit this
+    // flow, otherwise resubscribing users get silently ignored.
     const { data: existingSubscription, error: checkError } = await supabaseAdmin
       .from('subscriptions')
       .select('*')
       .eq('user_id', userId)
+      .in('status', ['active', 'trialing'])
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     // Log for debugging
@@ -75,7 +80,7 @@ export async function POST(request: Request) {
     }
 
     if (existingSubscription) {
-      console.log('✅ Subscription already exists in database:', existingSubscription.id);
+      console.log('✅ Active subscription already exists in database:', existingSubscription.id);
       return NextResponse.json({
         success: true,
         message: 'Subscription already exists',
@@ -128,22 +133,28 @@ export async function POST(request: Request) {
       // Create subscription in database (using admin client to bypass RLS)
       // Note: Using bracket notation to access properties that exist at runtime but may not be in TypeScript types
       const subscriptionData = subscription as unknown as { current_period_start: number; current_period_end: number };
+      // Use upsert so this is idempotent — if the webhook already created the row,
+      // this updates it rather than crashing with a duplicate key error.
       const { data: newSubscription, error: insertError } = await supabaseAdmin
         .from('subscriptions')
-        .insert({
-          user_id: userId,
-          stripe_subscription_id: subscription.id,
-          stripe_customer_id: customerId,
-          stripe_price_id: priceId,
-          status: subscription.status,
-          current_period_start: new Date(subscriptionData.current_period_start * 1000).toISOString(),
-          current_period_end: new Date(subscriptionData.current_period_end * 1000).toISOString(),
-        })
+        .upsert(
+          {
+            user_id: userId,
+            stripe_subscription_id: subscription.id,
+            stripe_customer_id: customerId,
+            stripe_price_id: priceId,
+            status: subscription.status,
+            current_period_start: new Date(subscriptionData.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(subscriptionData.current_period_end * 1000).toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'stripe_subscription_id' }
+        )
         .select()
         .single();
 
       if (insertError) {
-        console.error('❌ Error creating subscription:', insertError);
+        console.error('❌ Error upserting subscription:', insertError);
         throw insertError;
       }
 
