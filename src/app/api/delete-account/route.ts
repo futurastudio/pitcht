@@ -19,7 +19,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
-import { withCSRFProtection } from '@/middleware/csrfProtection';
 import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
 
 // Use service role for admin operations
@@ -32,10 +31,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 export async function POST(request: NextRequest) {
   try {
-    // CSRF Protection
-    const csrfError = withCSRFProtection(request);
-    if (csrfError) return csrfError;
-
     // Rate Limiting (prevent abuse)
     const userKey = getUserIdentifier(request);
     const rateLimit = rateLimiter.check(userKey, RateLimitPresets.AUTH_ENDPOINT);

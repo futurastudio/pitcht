@@ -1,8 +1,6 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
-import { withCSRFProtection } from '@/middleware/csrfProtection';
-
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
 const supabaseAdmin = createClient(
@@ -22,10 +20,6 @@ const supabaseAdmin = createClient(
  */
 export async function POST(request: Request) {
   try {
-    // CSRF Protection
-    const csrfError = withCSRFProtection(request);
-    if (csrfError) return csrfError;
-
     const { userId } = await request.json();
 
     if (!userId) {

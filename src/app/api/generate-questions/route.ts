@@ -12,15 +12,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateQuestions } from '@/services/claude';
 import { SessionContext, GenerateQuestionsResponse } from '@/types/interview';
-import { withCSRFProtection } from '@/middleware/csrfProtection';
 import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
 
 export async function POST(request: NextRequest) {
   try {
-    // CSRF Protection
-    const csrfError = withCSRFProtection(request);
-    if (csrfError) return csrfError;
-
     // Rate Limiting (10 requests per hour)
     const userKey = getUserIdentifier(request);
     const rateLimit = rateLimiter.check(userKey, RateLimitPresets.AI_ENDPOINT);

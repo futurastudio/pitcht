@@ -13,7 +13,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateFeedback } from '@/services/claude';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
 import type { SessionType } from '@/types/interview';
-import { withCSRFProtection } from '@/middleware/csrfProtection';
 import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
 import { createClient } from '@supabase/supabase-js';
 
@@ -66,10 +65,6 @@ export interface GenerateFeedbackResponse {
 
 export async function POST(request: NextRequest) {
   try {
-    // CSRF Protection
-    const csrfError = withCSRFProtection(request);
-    if (csrfError) return csrfError;
-
     // Auth check — require a valid Supabase session token
     const authHeader = request.headers.get('Authorization');
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
