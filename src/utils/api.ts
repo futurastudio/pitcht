@@ -4,21 +4,30 @@
  */
 
 /**
+ * Detect if running inside Electron (no native browser window.location origin)
+ */
+function isElectron(): boolean {
+  return typeof window !== 'undefined' &&
+    typeof (window as Window & { electron?: unknown }).electron !== 'undefined';
+}
+
+/**
  * Get the base API URL
- * - In Electron production: Uses Vercel backend (NEXT_PUBLIC_URL)
- * - In development: Uses localhost
+ * - In browser (Vercel/web): Use relative path — browser resolves against its own origin
+ * - In Electron: Use NEXT_PUBLIC_URL (Vercel backend)
+ * - In SSR/Node: Use NEXT_PUBLIC_URL or localhost fallback
  */
 export function getApiUrl(endpoint: string): string {
-  // In development, always use localhost for faster debugging
-  // In production, use Vercel cloud backend
-  const isDev = process.env.NODE_ENV === 'development';
-  const baseUrl = isDev
-    ? 'http://localhost:3000'
-    : (process.env.NEXT_PUBLIC_URL || 'http://localhost:3000');
-
   // Ensure endpoint starts with /
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
+  // Browser context on web: use relative URL — always matches the deployment origin
+  if (typeof window !== 'undefined' && !isElectron()) {
+    return cleanEndpoint;
+  }
+
+  // Electron or SSR: need absolute URL
+  const baseUrl = process.env.NEXT_PUBLIC_URL || 'http://localhost:3000';
   return `${baseUrl}${cleanEndpoint}`;
 }
 

@@ -46,11 +46,11 @@ export async function POST(request: NextRequest) {
     // Parse request body
     const body: SessionContext = await request.json();
 
-    // Validate required fields
-    if (!body.sessionType || !body.context) {
+    // Validate required fields (context is optional — users can leave it blank)
+    if (!body.sessionType) {
       return NextResponse.json(
         {
-          error: 'Missing required fields: sessionType and context are required',
+          error: 'Missing required field: sessionType is required',
           questions: []
         },
         { status: 400 }
