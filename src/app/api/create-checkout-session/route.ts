@@ -2,11 +2,28 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+// Validate required env vars at module load time so misconfiguration is
+// immediately visible in Vercel Function logs rather than as a cryptic Stripe error.
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const APP_URL = process.env.NEXT_PUBLIC_URL;
+
+if (!STRIPE_SECRET_KEY) {
+  console.error('[create-checkout-session] FATAL: STRIPE_SECRET_KEY is not set');
+}
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('[create-checkout-session] FATAL: Supabase env vars are missing');
+}
+if (!APP_URL) {
+  console.warn('[create-checkout-session] WARNING: NEXT_PUBLIC_URL is not set — success/cancel URLs will be broken');
+}
+
+const stripe = new Stripe(STRIPE_SECRET_KEY ?? '');
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  SUPABASE_URL!,
+  SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function POST(request: Request) {
@@ -17,6 +34,17 @@ export async function POST(request: Request) {
     if (!priceId || !userId) {
       return NextResponse.json(
         { error: 'Missing required fields: priceId or userId' },
+        { status: 400 }
+      );
+    }
+
+    // Guard against the case where the NEXT_PUBLIC_STRIPE_PRICE_* env var was not
+    // set at build time — Next.js bakes NEXT_PUBLIC_ vars into the client bundle,
+    // so a missing var becomes the literal string "undefined" after substitution.
+    if (priceId === 'undefined' || !priceId.startsWith('price_')) {
+      console.error('[create-checkout-session] Invalid priceId received:', priceId, '— NEXT_PUBLIC_STRIPE_PRICE_MONTHLY or NEXT_PUBLIC_STRIPE_PRICE_ANNUAL may not be set in Vercel env vars');
+      return NextResponse.json(
+        { error: 'Invalid price configuration. Please contact support.' },
         { status: 400 }
       );
     }
@@ -114,7 +142,22 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ url: session.url });
   } catch (error: unknown) {
-    console.error('Error creating checkout session:', error);
+    // Log the full Stripe error details so they appear in Vercel Function logs
+    if (error instanceof Stripe.errors.StripeError) {
+      console.error('[create-checkout-session] Stripe error:', {
+        type: error.type,
+        code: error.code,
+        message: error.message,
+        statusCode: error.statusCode,
+        requestId: error.requestId,
+      });
+      return NextResponse.json(
+        { error: `Stripe error (${error.type}): ${error.message}` },
+        { status: 500 }
+      );
+    }
+
+    console.error('[create-checkout-session] Unexpected error:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
