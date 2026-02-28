@@ -56,9 +56,18 @@ export default function PricingPage() {
         return;
       }
 
-      // Redirect to Stripe Checkout using the URL
+      // Redirect to Stripe Checkout
       if (data.url) {
-        window.location.href = data.url;
+        // In Electron, open in the system browser; on web, navigate directly
+        const isElectron = typeof window !== 'undefined' &&
+          typeof (window as Window & { electron?: unknown }).electron !== 'undefined';
+        if (isElectron) {
+          window.open(data.url, '_blank');
+        } else {
+          window.location.href = data.url;
+        }
+        // Keep loading state — user is leaving the page
+        return;
       } else {
         throw new Error('No checkout URL received');
       }

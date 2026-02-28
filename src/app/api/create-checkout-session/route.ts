@@ -58,13 +58,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check if user already has a subscription
+    // Check if user already has an active or trialing subscription
     const { data: existingSubscription } = await supabase
       .from('subscriptions')
-      .select('*')
+      .select('stripe_customer_id')
       .eq('user_id', userId)
-      .eq('status', 'active')
-      .single();
+      .in('status', ['active', 'trialing'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
     if (existingSubscription) {
       return NextResponse.json(
@@ -73,9 +75,24 @@ export async function POST(request: Request) {
       );
     }
 
+    // Reuse existing Stripe customer ID if the user has a prior (cancelled) subscription,
+    // otherwise create a new customer via email. This prevents duplicate Stripe customers.
+    const { data: anyPriorSubscription } = await supabase
+      .from('subscriptions')
+      .select('stripe_customer_id')
+      .eq('user_id', userId)
+      .not('stripe_customer_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const customerParam = anyPriorSubscription?.stripe_customer_id
+      ? { customer: anyPriorSubscription.stripe_customer_id }
+      : { customer_email: user.email };
+
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
-      customer_email: user.email,
+      ...customerParam,
       client_reference_id: userId,
       mode: 'subscription',
       payment_method_types: ['card'],
@@ -92,7 +109,7 @@ export async function POST(request: Request) {
       },
       success_url: `${process.env.NEXT_PUBLIC_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.NEXT_PUBLIC_URL}/pricing`,
-      allow_promotion_codes: true, // Allow promo codes
+      allow_promotion_codes: true,
     });
 
     return NextResponse.json({ url: session.url });
