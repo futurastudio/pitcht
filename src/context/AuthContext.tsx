@@ -39,17 +39,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Initialize auth state
   useEffect(() => {
-    // Check active sessions
+    // Check active sessions and set initial state
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setLoading(false);
     });
 
-    // Listen for auth changes
+    // Listen for auth changes.
+    // We explicitly handle each event type to avoid spurious logouts:
+    // - SIGNED_IN / INITIAL_SESSION: user authenticated, set user
+    // - SIGNED_OUT: user explicitly signed out, clear user
+    // - TOKEN_REFRESHED: session renewed silently — update user but NEVER clear it
+    //   (a failed refresh fires SIGNED_OUT separately, not TOKEN_REFRESHED)
+    // - PASSWORD_RECOVERY / USER_UPDATED: update user object
+    // Ignoring unknown events prevents a Supabase internal event from
+    // unexpectedly logging the user out (e.g. on return from Stripe checkout).
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[auth] onAuthStateChange:', event, session?.user?.id ?? 'no user');
+
+      if (event === 'SIGNED_OUT') {
+        setUser(null);
+      } else if (session?.user) {
+        // SIGNED_IN, INITIAL_SESSION, TOKEN_REFRESHED, USER_UPDATED, PASSWORD_RECOVERY
+        setUser(session.user);
+      }
+      // If event is TOKEN_REFRESHED but session is somehow null, do NOT clear user.
+      // This prevents an edge-case race condition where a mid-flight token refresh
+      // temporarily returns a null session and logs the user out visually.
     });
 
     return () => subscription.unsubscribe();
