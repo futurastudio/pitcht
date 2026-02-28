@@ -72,16 +72,21 @@ export async function POST(request: Request) {
           break;
         }
 
-        // Get the price ID from the subscription
+        // Get the price ID and billing period from the subscription
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const priceId = subscription.items.data[0].price.id;
+        const subData = subscription as unknown as { current_period_start: number; current_period_end: number };
+        const periodStart = new Date(subData.current_period_start * 1000);
+        const periodEnd = new Date(subData.current_period_end * 1000);
 
-        // Create subscription in database
+        // Create/upsert subscription in database (idempotent — safe if verify-subscription ran first)
         await createPremiumSubscription(
           userId,
           subscriptionId,
           customerId,
-          priceId
+          priceId,
+          periodStart,
+          periodEnd
         );
 
         console.log(`✅ Subscription created for user: ${userId}`);

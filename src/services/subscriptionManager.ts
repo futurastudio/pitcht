@@ -109,23 +109,37 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
 
 /**
  * Create premium subscription for user
- * Called after successful Stripe payment
+ * Called after successful Stripe payment (webhook or verify-subscription safety net).
+ *
+ * Uses upsert on stripe_subscription_id so it is idempotent — safe to call from
+ * both the webhook AND the /success verify endpoint without producing duplicates or
+ * crashing with a unique-constraint violation.
+ *
+ * currentPeriodStart / currentPeriodEnd should come directly from Stripe data.
+ * They are optional here only for backwards-compat; always pass them when available.
  */
 export async function createPremiumSubscription(
   userId: string,
   stripeSubscriptionId: string,
   stripeCustomerId: string,
-  priceId: string
+  priceId: string,
+  currentPeriodStart?: Date,
+  currentPeriodEnd?: Date
 ): Promise<void> {
-  const { error } = await supabase.from('subscriptions').insert({
-    user_id: userId,
-    stripe_subscription_id: stripeSubscriptionId,
-    stripe_customer_id: stripeCustomerId,
-    stripe_price_id: priceId,
-    status: 'active',
-    current_period_start: new Date().toISOString(),
-    current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
-  });
+  const now = new Date();
+  const { error } = await supabase.from('subscriptions').upsert(
+    {
+      user_id: userId,
+      stripe_subscription_id: stripeSubscriptionId,
+      stripe_customer_id: stripeCustomerId,
+      stripe_price_id: priceId,
+      status: 'active',
+      current_period_start: (currentPeriodStart ?? now).toISOString(),
+      current_period_end: (currentPeriodEnd ?? new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)).toISOString(),
+      updated_at: now.toISOString(),
+    },
+    { onConflict: 'stripe_subscription_id' }
+  );
 
   if (error) {
     console.error('Error creating subscription:', error);

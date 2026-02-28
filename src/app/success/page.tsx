@@ -14,6 +14,7 @@ function SuccessContent() {
   const { user, subscriptionStatus, refreshSubscriptionStatus } = useAuth();
   const [showConfetti, setShowConfetti] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [verifyError, setVerifyError] = useState(false);
 
   useEffect(() => {
     // Hide confetti after 3 seconds
@@ -22,15 +23,22 @@ function SuccessContent() {
   }, []);
 
   useEffect(() => {
-    // Verify subscription as safety net in case webhook failed
-    const verifySubscription = async () => {
-      if (!sessionId || !user) return;
+    // Verify subscription as safety net in case webhook is delayed.
+    // Retries up to 5 times with 2-second gaps to handle Stripe webhook lag.
+    if (!sessionId || !user) return;
+
+    let cancelled = false;
+    const MAX_ATTEMPTS = 5;
+    const RETRY_DELAY_MS = 2000;
+
+    const attempt = async (attemptsLeft: number) => {
+      if (cancelled) return;
 
       setIsVerifying(true);
-      try {
-        // Get the current session token for authorization
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      setVerifyError(false);
 
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         if (sessionError || !session) {
           console.error('No active session for verification:', sessionError);
           setIsVerifying(false);
@@ -49,21 +57,34 @@ function SuccessContent() {
         const data = await response.json();
 
         if (response.ok) {
-          // Refresh the subscription status in AuthContext
+          // Always refresh so AuthContext reflects the new subscription
           if (refreshSubscriptionStatus) {
             await refreshSubscriptionStatus();
           }
+          setIsVerifying(false);
         } else {
-          console.error('❌ Verification failed:', data);
+          console.error(`❌ Verification attempt failed (${attemptsLeft} left):`, data);
+          if (attemptsLeft > 1 && !cancelled) {
+            setTimeout(() => attempt(attemptsLeft - 1), RETRY_DELAY_MS);
+          } else {
+            setIsVerifying(false);
+            setVerifyError(true);
+          }
         }
       } catch (error) {
         console.error('❌ Error verifying subscription:', error);
-      } finally {
-        setIsVerifying(false);
+        if (attemptsLeft > 1 && !cancelled) {
+          setTimeout(() => attempt(attemptsLeft - 1), RETRY_DELAY_MS);
+        } else {
+          setIsVerifying(false);
+          setVerifyError(true);
+        }
       }
     };
 
-    verifySubscription();
+    attempt(MAX_ATTEMPTS);
+
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, user]);
 
@@ -128,11 +149,24 @@ function SuccessContent() {
 
           {/* Success Message */}
           <h1 className="text-4xl font-bold text-white mb-4">
-            Welcome to Pitcht Premium! 🎉
+            Welcome to Pitcht Pro!
           </h1>
-          <p className="text-xl text-white/80 mb-8">
+          <p className="text-xl text-white/80 mb-4">
             Your subscription is now active. Time to level up your practice!
           </p>
+
+          {/* Verification status banner */}
+          {isVerifying && (
+            <div className="bg-white/10 border border-white/20 rounded-2xl px-4 py-2 mb-6 text-white/70 text-sm">
+              Activating your subscription...
+            </div>
+          )}
+          {verifyError && (
+            <div className="bg-red-500/20 border border-red-400/30 rounded-2xl px-4 py-3 mb-6 text-red-300 text-sm">
+              We had trouble confirming your subscription automatically. It will activate within a few minutes — or contact us at{' '}
+              <a href="mailto:contact@pitcht.us" className="underline">contact@pitcht.us</a> if it doesn&apos;t.
+            </div>
+          )}
 
           {/* Subscription Details */}
           <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 mb-8">
@@ -140,7 +174,7 @@ function SuccessContent() {
               <div>
                 <p className="text-white/60 text-sm mb-1">Status</p>
                 <p className="text-white font-semibold">
-                  {subscriptionStatus.isTrialing ? '7-Day Trial Active' : 'Premium Active'}
+                  {subscriptionStatus.isPremium ? 'Pro Active' : 'Activating...'}
                 </p>
               </div>
               <div>
@@ -148,12 +182,8 @@ function SuccessContent() {
                 <p className="text-white font-semibold">Unlimited</p>
               </div>
               <div>
-                <p className="text-white/60 text-sm mb-1">Next Billing</p>
-                <p className="text-white font-semibold">
-                  {subscriptionStatus.trialEndsAt
-                    ? new Date(subscriptionStatus.trialEndsAt).toLocaleDateString()
-                    : 'See account settings'}
-                </p>
+                <p className="text-white/60 text-sm mb-1">Billing</p>
+                <p className="text-white font-semibold">See account settings</p>
               </div>
             </div>
           </div>
@@ -215,9 +245,7 @@ function SuccessContent() {
         {/* Additional Info */}
         <div className="mt-8 text-center">
           <p className="text-white/60 text-sm mb-4">
-            {subscriptionStatus.isTrialing
-              ? "Your 7-day free trial has started. You won't be charged until the trial ends."
-              : 'Thank you for subscribing to Pitcht Premium!'}
+            Thank you for subscribing to Pitcht Pro!
           </p>
           <p className="text-white/60 text-sm">
             Questions? Contact us at{' '}
