@@ -38,7 +38,19 @@ const supabase = createClient(
 export async function POST(request: Request) {
   try {
 
-    const { priceId, userId } = await request.json();
+    const { priceId, userId, returnOrigin } = await request.json();
+
+    // Validate returnOrigin against an allowlist — never trust arbitrary client URLs.
+    // This ensures Stripe always redirects back to the origin that initiated checkout
+    // (critical for Electron dev where the app lives at localhost:3000, not app.pitcht.us).
+    const ALLOWED_ORIGINS = [
+      'https://app.pitcht.us',
+      'https://pitchtcom.vercel.app',
+      'http://localhost:3000',
+    ];
+    const validatedOrigin = ALLOWED_ORIGINS.includes(returnOrigin)
+      ? returnOrigin
+      : (process.env.NEXT_PUBLIC_URL || 'https://app.pitcht.us');
 
     if (!priceId || !userId) {
       return NextResponse.json(
@@ -144,8 +156,8 @@ export async function POST(request: Request) {
           userId: userId,
         },
       },
-      success_url: `${process.env.NEXT_PUBLIC_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_URL}/pricing`,
+      success_url: `${validatedOrigin}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${validatedOrigin}/pricing`,
       allow_promotion_codes: true,
     });
 

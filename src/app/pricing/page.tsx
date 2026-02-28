@@ -73,6 +73,7 @@ export default function PricingPage() {
         body: JSON.stringify({
           priceId,
           userId: user.id,
+          returnOrigin: window.location.origin,
         }),
       });
 
