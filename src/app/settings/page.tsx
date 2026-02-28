@@ -25,6 +25,24 @@ export default function SettingsPage() {
   const [isSavingSms, setIsSavingSms] = useState(false);
   const [smsLoaded, setSmsLoaded] = useState(false);
 
+  // When the window regains focus (user returns from Stripe billing portal),
+  // clear the stuck loading state so the button is usable again.
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isLoadingPortal) setIsLoadingPortal(false);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') handleFocus();
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoadingPortal]);
+
   // Load existing SMS preferences
   useEffect(() => {
     if (!user) return;
@@ -99,7 +117,7 @@ export default function SettingsPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({ userId: user.id, returnOrigin: window.location.origin }),
       });
 
       const data = await response.json();

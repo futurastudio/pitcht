@@ -25,7 +25,18 @@ const supabaseAdmin = createClient(
  */
 export async function POST(request: Request) {
   try {
-    const { userId } = await request.json();
+    const { userId, returnOrigin } = await request.json();
+
+    // Validate returnOrigin against an allowlist so Stripe always redirects back
+    // to the origin that initiated the request (critical for Electron dev at localhost:3000).
+    const ALLOWED_ORIGINS = [
+      'https://app.pitcht.us',
+      'https://pitchtcom.vercel.app',
+      'http://localhost:3000',
+    ];
+    const validatedOrigin = ALLOWED_ORIGINS.includes(returnOrigin)
+      ? returnOrigin
+      : (process.env.NEXT_PUBLIC_URL || 'https://app.pitcht.us');
 
     if (!userId) {
       return NextResponse.json(
@@ -95,7 +106,7 @@ export async function POST(request: Request) {
     // Create portal session
     const portalSession = await stripe.billingPortal.sessions.create({
       customer: subscription.stripe_customer_id,
-      return_url: `${process.env.NEXT_PUBLIC_URL}/settings`,
+      return_url: `${validatedOrigin}/settings`,
     });
 
     return NextResponse.json({ url: portalSession.url });
