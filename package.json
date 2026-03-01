@@ -9,9 +9,53 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "electron-build": "electron-builder",
+    "electron-build": "tsc -p tsconfig.electron.json && electron-builder",
     "verify-env": "node scripts/verify-env.js",
     "pre-deploy": "npm run verify-env && npm run build"
+  },
+  "build": {
+    "appId": "us.pitcht.app",
+    "productName": "Pitcht",
+    "copyright": "Copyright © 2025 Pitcht",
+    "files": [
+      "dist/electron/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "category": "public.app-category.education",
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "Pitcht",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "deleteAppDataOnUninstall": false
+    }
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.0",

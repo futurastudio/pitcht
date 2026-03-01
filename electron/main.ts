@@ -21,32 +21,24 @@ const createWindow = () => {
     const isDev = process.env.NODE_ENV === 'development';
 
     if (!isDev) {
-        // Only apply strict CSP in production
+        // Production loads https://app.pitcht.us — CSP applied to that origin's responses.
+        // The Vercel deployment also sets its own CSP headers; this is a defence-in-depth layer
+        // for the Electron webContents session only.
         mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
             callback({
                 responseHeaders: {
                     ...details.responseHeaders,
                     'Content-Security-Policy': [
                         [
-                            "default-src 'self'",
-                            // Scripts: Allow self and inline (Next.js requires it)
-                            // unsafe-eval and wasm-unsafe-eval are required for MediaPipe WebAssembly
-                            "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net blob:",
-                            // Styles: Allow self and inline (Tailwind)
-                            "style-src 'self' 'unsafe-inline'",
-                            // Images: Allow from self, data URIs, and Supabase
-                            "img-src 'self' data: blob: https://*.supabase.co",
-                            // Fonts: Allow from self and data URIs
-                            "font-src 'self' data:",
-                            // API connections
-                            "connect-src 'self' https://*.supabase.co https://api.anthropic.com https://api.openai.com https://api.stripe.com https://cdn.jsdelivr.net wss://*.supabase.co",
-                            // Media: Allow blob URLs for video recording
-                            "media-src 'self' blob: https://*.supabase.co",
-                            // Workers: Allow blob URLs
+                            "default-src 'self' https://app.pitcht.us",
+                            "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline' https://app.pitcht.us https://cdn.jsdelivr.net blob:",
+                            "style-src 'self' 'unsafe-inline' https://app.pitcht.us",
+                            "img-src 'self' data: blob: https://*.supabase.co https://app.pitcht.us",
+                            "font-src 'self' data: https://app.pitcht.us",
+                            "connect-src 'self' https://app.pitcht.us https://*.supabase.co https://api.anthropic.com https://api.openai.com https://api.stripe.com https://cdn.jsdelivr.net wss://*.supabase.co",
+                            "media-src 'self' blob: https://*.supabase.co https://app.pitcht.us",
                             "worker-src 'self' blob:",
-                            // Frames: Allow Stripe
-                            "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
-                            // Block plugins
+                            "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://billing.stripe.com",
                             "object-src 'none'",
                         ].join('; ')
                     ]
@@ -55,9 +47,12 @@ const createWindow = () => {
         });
     }
 
+    // Production: load the live Vercel deployment.
+    // The app has server-side API routes (transcription, AI feedback, Stripe, etc.)
+    // that cannot run as static files — Electron is purely the native window wrapper.
     const startUrl = isDev
         ? 'http://localhost:3000'
-        : `file://${path.join(__dirname, '../out/index.html')}`;
+        : 'https://app.pitcht.us';
 
     mainWindow.loadURL(startUrl);
 

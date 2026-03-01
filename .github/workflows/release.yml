@@ -1,0 +1,113 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3
+
+jobs:
+  build-mac:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Electron (Mac)
+        run: npm run electron-build
+        env:
+          # Skips code signing — app is distributed unsigned for now
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload Mac arm64 DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-arm64
+          path: release/*-arm64.dmg
+
+      - name: Upload Mac x64 DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-x64
+          path: release/Pitcht-*.dmg
+          exclude: release/*-arm64.dmg
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Electron (Windows)
+        run: npm run electron-build -- --win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: release/*.exe
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-mac, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download Mac arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-arm64
+          path: artifacts/
+
+      - name: Download Mac x64
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-x64
+          path: artifacts/
+
+      - name: Download Windows
+        uses: actions/download-artifact@v4
+        with:
+          name: windows
+          path: artifacts/
+
+      - name: Create Release and upload files
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Pitcht ${{ github.ref_name }}
+          body: |
+            ## Download Pitcht ${{ github.ref_name }}
+
+            | Platform | Download |
+            |----------|----------|
+            | Mac (Apple Silicon — M1/M2/M3/M4) | `Pitcht-*-arm64.dmg` |
+            | Mac (Intel) | `Pitcht-*.dmg` |
+            | Windows | `Pitcht-Setup-*.exe` |
+
+            ### macOS install note
+            If macOS blocks the app on first open: **System Settings → Privacy & Security → scroll down → Open Anyway**
+          files: artifacts/*
+          draft: false
+          prerelease: false
