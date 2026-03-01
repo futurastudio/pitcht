@@ -26,6 +26,7 @@
       "output": "release"
     },
     "mac": {
+      "icon": "public/icon.icns",
       "target": [
         {
           "target": "dmg",
@@ -37,12 +38,14 @@
     },
     "dmg": {
       "title": "Pitcht",
+      "icon": "public/icon.icns",
       "contents": [
         { "x": 130, "y": 220 },
         { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
       ]
     },
     "win": {
+      "icon": "public/icon.ico",
       "target": [
         {
           "target": "nsis",
