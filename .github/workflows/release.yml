@@ -5,6 +5,9 @@ on:
     tags:
       - 'v*'  # Triggers on version tags like v1.0.0, v1.2.3
 
+permissions:
+  contents: write  # Required to create GitHub Releases and upload assets
+
 jobs:
   build-mac:
     name: Build macOS
@@ -25,8 +28,8 @@ jobs:
       - name: Build Electron (Mac)
         run: npm run electron-build
         env:
-          # Skips code signing — app is distributed unsigned for now
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Mac arm64 DMG
         uses: actions/upload-artifact@v4
@@ -61,6 +64,7 @@ jobs:
         run: npm run electron-build -- --win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
@@ -72,8 +76,6 @@ jobs:
     name: Publish GitHub Release
     needs: [build-mac, build-windows]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Download Mac arm64
         uses: actions/download-artifact@v4
@@ -97,6 +99,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: Pitcht ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           body: |
             ## Download Pitcht ${{ github.ref_name }}
 
