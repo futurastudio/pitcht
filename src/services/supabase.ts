@@ -16,10 +16,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
  * Supabase client (uses anon key + RLS for security)
  * Safe to use on client-side - RLS policies protect data
  *
- * detectSessionInUrl: false — OAuth redirects are handled server-side at
- * /auth/callback. Leaving this true (the default) causes Supabase to inspect
- * every URL for auth tokens, which can misfire on Stripe return URLs that
- * contain query params like ?session_id=... and trigger spurious SIGNED_OUT events.
+ * detectSessionInUrl: true — required so Supabase can parse the #access_token=
+ * hash that Google OAuth redirects back with. Stripe return URLs use query params
+ * (?session_id=, /success, /settings) which do NOT contain access_token, so
+ * Supabase will not misfire on them.
  *
  * persistSession: true — keeps the session in localStorage so returning from
  * an external domain (Stripe checkout) does not log the user out.
@@ -31,7 +31,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: true,
   },
 });
 
