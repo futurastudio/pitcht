@@ -174,13 +174,13 @@ async function checkStorage(): Promise<CheckResult> {
       };
     }
 
-    // Check if 'videos' bucket exists
-    const videoBucket = data?.find(bucket => bucket.name === 'videos');
-    if (!videoBucket) {
+    // Check if 'recordings' bucket exists
+    const recordingsBucket = data?.find(bucket => bucket.name === 'recordings');
+    if (!recordingsBucket) {
       return {
         status: 'warn',
         responseTime,
-        message: 'Videos bucket not found',
+        message: 'Recordings bucket not found',
       };
     }
 
@@ -264,6 +264,7 @@ async function checkOpenAIAPI(): Promise<CheckResult> {
     }
 
     // Simple HEAD request to verify API is reachable
+    // Any HTTP response (including 404, 421) means the API is reachable
     const response = await fetch('https://api.openai.com', {
       method: 'HEAD',
       signal: AbortSignal.timeout(5000), // 5 second timeout
@@ -271,8 +272,9 @@ async function checkOpenAIAPI(): Promise<CheckResult> {
 
     const responseTime = Date.now() - start;
 
-    // OpenAI returns 404 for root endpoint, which is expected
-    if (response.status === 404 || response.status === 200) {
+    // Any response (200, 404, 421, etc.) means the API is reachable
+    // We only fail if we get a network error (caught below)
+    if (response.status < 500) {
       return {
         status: 'pass',
         responseTime,
