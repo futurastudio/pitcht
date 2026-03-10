@@ -110,7 +110,20 @@ function buildEmailHtml({ email }: { email: string }): string {
           <!-- Logo -->
           <tr>
             <td style="padding-bottom:32px;" align="center">
-              <span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">Pitcht</span>
+              <table cellpadding="0" cellspacing="0" style="display:inline-table;">
+                <tr>
+                  <td style="vertical-align:middle;padding-right:8px;">
+                    <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M3 13 C6 8, 13 8, 16 13 C13 18, 6 18, 3 13 Z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                      <path d="M16 13 C19 8, 26 8, 29 13 C26 18, 19 18, 16 13 Z" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                      <path d="M10 23 Q16 27 22 23" stroke="#ffffff" stroke-width="2" stroke-linecap="round" fill="none"/>
+                    </svg>
+                  </td>
+                  <td style="vertical-align:middle;">
+                    <span style="font-size:22px;font-weight:700;color:#ffffff;letter-spacing:-0.5px;">Pitcht</span>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
 
