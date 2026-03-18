@@ -4,7 +4,9 @@ import { createClient } from '@supabase/supabase-js';
 // Lightweight endpoint for marking sessions as completed.
 // Called via navigator.sendBeacon on page unload (beforeunload/visibilitychange).
 // Note: No CSRF check here — beacon requests can't set custom headers easily.
-// Auth is validated via Bearer token in the body.
+// Auth token is passed in the request body (sendBeacon cannot set headers).
+// The frontend interview page stores the access token in a ref and includes
+// it in every beacon payload — the token is always required.
 
 export async function POST(request: NextRequest) {
     try {
@@ -15,16 +17,20 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Missing sessionId' }, { status: 400 });
         }
 
-        // Validate auth token if provided
-        if (token) {
-            const supabase = createClient(
-                process.env.NEXT_PUBLIC_SUPABASE_URL!,
-                process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-            );
-            const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-            if (authError || !user) {
-                return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-            }
+        // Token is now required — reject unauthenticated beacon calls.
+        // Previously the check was guarded by `if (token)` which allowed
+        // unauthenticated requests to mark arbitrary sessions as completed.
+        if (!token) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const supabase = createClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+        );
+        const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+        if (authError || !user) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
         // Use service role to bypass RLS for reliable write on page unload

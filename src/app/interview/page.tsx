@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/utils/api';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Prompter from '@/components/Prompter';
@@ -9,6 +9,7 @@ import Controls from '@/components/Controls';
 import ContextModal from '@/components/ContextModal';
 import { useInterview } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/services/supabase';
 import { analyzeVideoPath } from '@/services/emotionAnalyzer';
 import { calculatePresenceScore } from '@/services/videoAnalyzer';
 import { analyzeSpeech, SpeechMetrics } from '@/services/speechAnalyzer';
@@ -29,6 +30,21 @@ export default function InterviewPage() {
     const [recordingDuration, setRecordingDuration] = useState(0);
     const [sessionElapsed, setSessionElapsed] = useState(0); // Total session time in seconds
     const [countdown, setCountdown] = useState<number | null>(null); // Countdown before recording starts
+
+    // Keep the Supabase access token available synchronously for the sendBeacon
+    // callback — beacon fires during page unload where we cannot await async calls.
+    const accessTokenRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        // Populate on mount then stay current via onAuthStateChange.
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            accessTokenRef.current = session?.access_token ?? null;
+        });
+        const { data: { subscription: tokenSub } } = supabase.auth.onAuthStateChange(
+            (_event, session) => { accessTokenRef.current = session?.access_token ?? null; }
+        );
+        return () => tokenSub.unsubscribe();
+    }, []);
 
     useEffect(() => {
         setMounted(true);
@@ -59,9 +75,10 @@ export default function InterviewPage() {
 
         const sendCompletionBeacon = () => {
             if (!sessionId) return;
-            // Use sendBeacon for reliable delivery during page unload
-            // sendBeacon sends as text/plain so we use a Blob with JSON type
-            const payload = JSON.stringify({ sessionId });
+            // Use sendBeacon for reliable delivery during page unload.
+            // sendBeacon cannot set headers, so auth token is passed in the body.
+            // accessTokenRef is kept current by the onAuthStateChange effect above.
+            const payload = JSON.stringify({ sessionId, token: accessTokenRef.current });
             navigator.sendBeacon('/api/complete-session', new Blob([payload], { type: 'application/json' }));
         };
 

@@ -12,12 +12,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateQuestions } from '@/services/claude';
 import { SessionContext, GenerateQuestionsResponse } from '@/types/interview';
-import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
+import rateLimiter, { RateLimitPresets, formatResetTime } from '@/middleware/rateLimiter';
+import { createClient } from '@supabase/supabase-js';
 
 export async function POST(request: NextRequest) {
   try {
-    // Rate Limiting (10 requests per hour)
-    const userKey = getUserIdentifier(request);
+    // Auth check — require a valid Supabase session token (same pattern as generate-feedback).
+    // This stops unauthenticated direct API calls from consuming Claude credits.
+    const authHeader = request.headers.get('Authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const supabaseClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Rate Limiting (10 requests per hour) — key by user ID now that we have it,
+    // which is more accurate than falling back to IP.
+    const userKey = `user:${user.id}`;
     const rateLimit = rateLimiter.check(userKey, RateLimitPresets.AI_ENDPOINT);
 
     if (!rateLimit.allowed) {
