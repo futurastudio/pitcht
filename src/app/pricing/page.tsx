@@ -122,7 +122,7 @@ export default function PricingPage() {
             Simple, Transparent Pricing
           </h1>
           <p className="text-white/60 text-lg max-w-2xl mx-auto">
-            Try Pitcht free with 1 session. No credit card required. Cancel anytime.
+            Try Pitcht free with 3 sessions. No credit card required. Cancel anytime.
           </p>
         </div>
 
@@ -142,7 +142,7 @@ export default function PricingPage() {
               <div className="flex items-start gap-3">
                 <span className="text-green-400 mt-1">✓</span>
                 <div>
-                  <p className="text-white font-medium">1 free session</p>
+                  <p className="text-white font-medium">3 free sessions</p>
                   <p className="text-white/50 text-sm">Full access to all features</p>
                 </div>
               </div>
@@ -324,9 +324,9 @@ export default function PricingPage() {
               </p>
             </div>
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">
-              <h3 className="text-white font-semibold mb-2">What happens after my free session?</h3>
+              <h3 className="text-white font-semibold mb-2">What happens after my free sessions?</h3>
               <p className="text-white/60 text-sm">
-                Your free session stays in your history. Upgrade to Pro to keep practicing with unlimited sessions. Your data is never deleted.
+                Your free sessions stay in your history. Upgrade to Pro to keep practicing with unlimited sessions. Your data is never deleted.
               </p>
             </div>
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6">

@@ -154,7 +154,7 @@ The Pitcht Team`,
 Your 7-day Pitcht trial has ended.
 
 You now have access to:
-- 1 free practice session per month
+- 3 free practice sessions
 - All your past sessions are saved
 
 Upgrade to Premium ($27/month) to get:
@@ -176,7 +176,7 @@ The Pitcht Team`,
           <p>Your 7-day Pitcht trial has ended.</p>
           <h3>You now have access to:</h3>
           <ul>
-            <li>1 free practice session per month</li>
+            <li>3 free practice sessions</li>
             <li>All your past sessions are saved</li>
           </ul>
           <h3>Upgrade to Premium ($27/month) to get:</h3>

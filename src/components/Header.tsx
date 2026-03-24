@@ -104,7 +104,7 @@ export default function Header() {
                       <p className="text-white/50 text-xs mt-1">
                         {subscriptionStatus.isPremium && 'Pro Member'}
                         {subscriptionStatus.isTrialing && `Trial ends ${subscriptionStatus.trialEndsAt ? new Date(subscriptionStatus.trialEndsAt).toLocaleDateString() : 'soon'}`}
-                        {!subscriptionStatus.isPremium && !subscriptionStatus.isTrialing && `${subscriptionStatus.sessionsThisMonth}/1 sessions used`}
+                        {!subscriptionStatus.isPremium && !subscriptionStatus.isTrialing && `${subscriptionStatus.sessionsThisMonth}/3 sessions used`}
                       </p>
                     </div>
 

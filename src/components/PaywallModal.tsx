@@ -34,7 +34,7 @@ export default function PaywallModal({ isOpen, onClose, reason, sessionsUsed = 1
           {/* Heading */}
           <h2 className="text-2xl font-bold text-white mb-2">Upgrade to Pro</h2>
           <p className="text-white/70 mb-6">
-            {reason || `You&apos;ve used your free session. Upgrade to Pro to keep practicing.`}
+            {reason || `You&apos;ve used all 3 free sessions. Upgrade to Pro for unlimited practice.`}
           </p>
 
           {/* Pricing Card */}

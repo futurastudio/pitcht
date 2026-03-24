@@ -310,7 +310,7 @@ export default function SettingsPage() {
               <div>
                 <label className="text-white/50 text-sm">Sessions This Month</label>
                 <p className="text-white text-lg">
-                  {subscriptionStatus.sessionsThisMonth} / 1 used
+                  {subscriptionStatus.sessionsThisMonth} / 3 used
                 </p>
               </div>
             )}

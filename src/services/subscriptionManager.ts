@@ -17,7 +17,7 @@ export interface SubscriptionCheckResult {
 
 /**
  * Check if user can start a new session
- * Enforces: 1 session/month for free tier, unlimited for trial/premium
+ * Enforces: 3 sessions for free tier, unlimited for trial/premium
  */
 export async function canUserStartSession(userId: string): Promise<SubscriptionCheckResult> {
   try {
@@ -60,7 +60,7 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       };
     }
 
-    // Free trial: 1 completed session lifetime.
+    // Free tier: 3 completed sessions lifetime.
     // Only count completed sessions — an abandoned/in-progress session does not
     // consume the trial so users aren't permanently locked out by a refresh or crash.
     const { count } = await supabase
@@ -70,13 +70,13 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       .eq('status', 'completed');
 
     const sessionsThisMonth = count || 0;
-    // Trial users get exactly 1 session total (counted lifetime, not per-month)
-    const TRIAL_SESSION_LIMIT = 1;
+    // Free users get exactly 3 sessions total (counted lifetime, not per-month)
+    const TRIAL_SESSION_LIMIT = 3;
 
     if (sessionsThisMonth >= TRIAL_SESSION_LIMIT) {
       return {
         allowed: false,
-        reason: `Your free trial session has been used. Upgrade to Pro for unlimited practice.`,
+        reason: `You've used all 3 free sessions. Upgrade to Pro for unlimited practice.`,
         isPremium: false,
         isTrialing: false,
         trialEndsAt: null,
