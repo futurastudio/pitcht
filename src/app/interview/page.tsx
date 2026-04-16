@@ -123,6 +123,31 @@ export default function InterviewPage() {
         };
     }, [sessionId]);
 
+    // ── Browser back-button interception ────────────────────────────────────
+    // Push a sentinel history entry on mount so the first browser-back press
+    // fires a popstate event rather than immediately leaving the page.
+    // Without this, popstate never fires on the first back-press in a Next.js SPA.
+    useEffect(() => {
+        window.history.pushState({ pitcht_interview: true }, '');
+
+        const handlePopState = () => {
+            if (recordingsCountRef.current === 0) {
+                // Re-push the sentinel to keep the user here, then show dialog.
+                window.history.pushState({ pitcht_interview: true }, '');
+                setShowExitDialog(true);
+                setPendingExitPath('/');
+            } else {
+                // Has recordings — let them go; navigate home cleanly via SPA routing.
+                router.push('/');
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+        return () => window.removeEventListener('popstate', handlePopState);
+    // router from useRouter() is stable; recordingsCountRef is a ref — safe with []
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // Recording timer effect
     useEffect(() => {
         let interval: NodeJS.Timeout | undefined;
