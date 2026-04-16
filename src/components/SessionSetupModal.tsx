@@ -33,6 +33,14 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
     const [showSignup, setShowSignup] = useState(false);
     const [showLogin, setShowLogin] = useState(false);
 
+    // JD nudge: shown once when user tries to start with an empty textarea
+    const [showNudge, setShowNudge] = useState(false);
+    const hasShownNudge = useRef(false);
+
+    // Textarea highlight animation: pulses briefly when the modal first opens
+    const [textareaHighlight, setTextareaHighlight] = useState(false);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+
     /**
      * pendingResume: set to true when the user completes signup/login inside
      * this modal. A useEffect watches for the user to appear in AuthContext
@@ -49,6 +57,18 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [user]);
+
+    // Brief ring highlight on the textarea when the modal first opens,
+    // drawing the user's eye to the JD field.
+    useEffect(() => {
+        if (isOpen) {
+            hasShownNudge.current = false;
+            setShowNudge(false);
+            const t = setTimeout(() => setTextareaHighlight(true), 120); // slight delay after zoom-in
+            const t2 = setTimeout(() => setTextareaHighlight(false), 1900);
+            return () => { clearTimeout(t); clearTimeout(t2); };
+        }
+    }, [isOpen]);
 
     /**
      * Core generate-and-navigate logic.
@@ -137,6 +157,28 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
         pendingResume.current = true;
     }, []);
 
+    /**
+     * Intercepts "Start Simulation" for job/internship interviews.
+     * If the context is empty and we haven't nudged yet this session,
+     * show the JD nudge once instead of proceeding immediately.
+     */
+    const handleStartClick = useCallback(async () => {
+        const isInterviewType = sessionType === 'job-interview' || sessionType === 'internship-interview';
+        if (!context.trim() && !hasShownNudge.current && isInterviewType) {
+            hasShownNudge.current = true;
+            setShowNudge(true);
+            return;
+        }
+        setShowNudge(false);
+        await runStart();
+    }, [context, sessionType, runStart]);
+
+    /** "Continue anyway" in the nudge — bypasses the JD nudge and starts. */
+    const handleContinueAnyway = useCallback(async () => {
+        setShowNudge(false);
+        await runStart();
+    }, [runStart]);
+
     // Early return AFTER all hooks — respects React rules of hooks
     if (!isOpen) return null;
 
@@ -210,15 +252,34 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                                         <span className="ml-1.5 text-white/35 font-normal">(optional — for tailored questions)</span>
                                     </label>
                                     <textarea
+                                        ref={textareaRef}
                                         value={context}
-                                        onChange={(e) => setContext(e.target.value)}
+                                        onChange={(e) => { setContext(e.target.value); setShowNudge(false); }}
                                         placeholder={
-                                            sessionType === 'job-interview' ? "Paste the job description or role title for tailored questions — or leave blank to practice with general questions." :
-                                                sessionType === 'internship-interview' ? "Paste the internship posting or company name for domain-specific questions — or leave blank for general practice." :
+                                            sessionType === 'job-interview' ? "e.g., 'Software Engineer at Google' or paste the full job posting — the more detail, the better your questions" :
+                                                sessionType === 'internship-interview' ? "e.g., 'Marketing Intern at Spotify' or paste the full internship posting — the more detail, the better your questions" :
                                                     "Describe what you're presenting (e.g., marketing strategy, case study, thesis defense) — or leave blank to practice with general prompts."
                                         }
-                                        className="w-full h-32 bg-black/20 border border-white/10 rounded-xl p-4 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/20 resize-none"
+                                        className={`w-full h-32 bg-black/20 border rounded-xl p-4 text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/20 resize-none transition-all duration-700 ${
+                                            textareaHighlight
+                                                ? 'border-white/40 shadow-[0_0_0_3px_rgba(255,255,255,0.12)]'
+                                                : 'border-white/10'
+                                        }`}
                                     />
+
+                                    {/* Without / With JD comparison — only for interview types */}
+                                    {(sessionType === 'job-interview' || sessionType === 'internship-interview') && (
+                                        <div className="flex gap-2 mt-2.5">
+                                            <div className="flex-1 bg-white/5 rounded-xl p-3 border border-white/8">
+                                                <div className="text-[10px] text-white/35 uppercase tracking-wider font-semibold mb-1">Without</div>
+                                                <p className="text-[11px] text-white/50 leading-relaxed">General questions that apply to any role</p>
+                                            </div>
+                                            <div className="flex-1 bg-blue-500/10 rounded-xl p-3 border border-blue-400/20">
+                                                <div className="text-[10px] text-blue-300/70 uppercase tracking-wider font-semibold mb-1">With job description ✦</div>
+                                                <p className="text-[11px] text-white/70 leading-relaxed">Role-specific questions tailored to the exact skills and responsibilities in the posting</p>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Unauthenticated nudge */}
@@ -228,20 +289,54 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                                     </p>
                                 )}
 
-                                <div className="flex justify-end space-x-3 pt-2">
-                                    <button
-                                        onClick={onClose}
-                                        className="px-4 py-2 rounded-full text-sm font-medium text-white/70 hover:bg-white/10 transition-colors"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        onClick={runStart}
-                                        className="px-6 py-2 rounded-full text-sm font-bold text-black bg-white hover:bg-white/90 transition-colors shadow-lg"
-                                    >
-                                        {user ? 'Start Simulation' : 'Continue →'}
-                                    </button>
-                                </div>
+                                {showNudge ? (
+                                    /* JD nudge — shown once when Start is clicked with empty context */
+                                    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                                        <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
+                                            <span className="text-base mt-0.5 flex-shrink-0">💡</span>
+                                            <div>
+                                                <p className="text-amber-200 text-sm font-semibold mb-0.5">
+                                                    Tip: paste a job description for much better questions
+                                                </p>
+                                                <p className="text-amber-200/65 text-xs leading-relaxed">
+                                                    You&apos;ll get role-specific questions tailored to the exact skills and responsibilities in the posting — much better than generic practice.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-end items-center gap-3">
+                                            <button
+                                                onClick={handleContinueAnyway}
+                                                className="text-sm text-white/45 hover:text-white/75 transition-colors"
+                                            >
+                                                Continue anyway
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setShowNudge(false);
+                                                    textareaRef.current?.focus();
+                                                }}
+                                                className="px-6 py-2 rounded-full text-sm font-bold text-black bg-white hover:bg-white/90 transition-colors shadow-lg"
+                                            >
+                                                Add Job Description
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex justify-end space-x-3 pt-2">
+                                        <button
+                                            onClick={onClose}
+                                            className="px-4 py-2 rounded-full text-sm font-medium text-white/70 hover:bg-white/10 transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleStartClick}
+                                            className="px-6 py-2 rounded-full text-sm font-bold text-black bg-white hover:bg-white/90 transition-colors shadow-lg"
+                                        >
+                                            {user ? 'Start Simulation' : 'Continue →'}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </>
                     )}
