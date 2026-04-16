@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import { InterviewProvider } from "@/context/InterviewContext";
+import { CameraProvider } from "@/context/CameraContext";
 import VideoFeed from "@/components/VideoFeed";
 import { Toaster } from "sonner";
 
@@ -41,12 +42,14 @@ export default function RootLayout({
 
         <AuthProvider>
           <InterviewProvider>
-            {/* Persistent Video Background */}
-            <VideoFeed />
-            {/* Page Content */}
-            <div className="relative z-10 w-full h-full">
-              {children}
-            </div>
+            <CameraProvider>
+              {/* Persistent Video Background */}
+              <VideoFeed />
+              {/* Page Content */}
+              <div className="relative z-10 w-full h-full">
+                {children}
+              </div>
+            </CameraProvider>
           </InterviewProvider>
         </AuthProvider>
         {/* Toast Notifications */}

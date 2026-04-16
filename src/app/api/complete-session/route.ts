@@ -39,6 +39,29 @@ export async function POST(request: NextRequest) {
             process.env.SUPABASE_SERVICE_ROLE_KEY!
         );
 
+        // Server-side guard: only mark the session as completed if it has at least
+        // one recording saved. This is a defense-in-depth check — the frontend
+        // already blocks the beacon and blocks direct navigation when recordings === 0,
+        // but this prevents any edge-case race condition or direct API call from
+        // consuming a user's free trial without them ever recording an answer.
+        const { count: recordingCount, error: countError } = await adminClient
+            .from('recordings')
+            .select('*', { count: 'exact', head: true })
+            .eq('session_id', sessionId);
+
+        if (countError) {
+            console.error('Failed to count recordings for session:', countError);
+            // Fail open: if we can't verify, don't mark as completed.
+            return NextResponse.json({ success: true, consumed: false });
+        }
+
+        if (!recordingCount || recordingCount === 0) {
+            // No recordings — leave session as in_progress so it doesn't consume
+            // the user's free trial. The client will handle cleanup.
+            console.log(`[complete-session] Skipping completion for session ${sessionId}: no recordings found.`);
+            return NextResponse.json({ success: true, consumed: false });
+        }
+
         const { error } = await adminClient
             .from('sessions')
             .update({
@@ -53,7 +76,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Database error' }, { status: 500 });
         }
 
-        return NextResponse.json({ success: true });
+        return NextResponse.json({ success: true, consumed: true });
     } catch (error) {
         console.error('complete-session error:', error);
         return NextResponse.json({ error: 'Internal error' }, { status: 500 });

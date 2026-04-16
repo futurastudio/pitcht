@@ -15,7 +15,7 @@ import type { GenerateFeedbackResponse } from '@/app/api/generate-feedback/route
 
 export default function Analysis() {
     const { recordings, updateRecording, clearSession, repeatSession, sessionType, sessionContext, questions } = useInterview();
-    const { user } = useAuth();
+    const { user, subscriptionStatus } = useAuth();
     const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
     const [videoSrc, setVideoSrc] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<GenerateFeedbackResponse | null>(null);
@@ -462,8 +462,12 @@ export default function Analysis() {
                                     </button>
                                 ))}
                                 {!hasRecordings && (
-                                    <div className="p-8 text-center text-white/30 bg-white/5 rounded-xl border border-white/5">
-                                        <p className="text-sm">No recordings found.</p>
+                                    <div className="p-5 text-center bg-white/5 rounded-xl border border-white/10">
+                                        <div className="text-2xl mb-3">🎬</div>
+                                        <p className="text-sm text-white/70 font-medium mb-1">No recordings yet</p>
+                                        <p className="text-xs text-white/40 leading-relaxed">
+                                            You didn&apos;t record any answers this session. Scroll right to see what your AI analysis would look like.
+                                        </p>
                                     </div>
                                 )}
                             </div>
@@ -472,6 +476,234 @@ export default function Analysis() {
 
                     {/* Right Area: Analysis View (70%) */}
                     <div className="flex-1 space-y-6">
+
+                        {/* === DEMO STATE: No Recordings — Show Sample Analysis === */}
+                        {!hasRecordings && (
+                            <>
+                                {/* Demo Question Header */}
+                                <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1.5">Sample Question</div>
+                                            <p className="text-white/90 font-medium text-sm leading-relaxed">Tell me about yourself and your background.</p>
+                                        </div>
+                                        <div className="px-2.5 py-1 bg-blue-500/20 border border-blue-500/30 rounded-full flex-shrink-0 mt-0.5">
+                                            <span className="text-[9px] text-blue-300 font-bold tracking-widest uppercase">Demo</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Demo Analysis Cards — styled identically to real analysis */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    {/* Demo AI Coach Feedback Card */}
+                                    <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6">
+                                        <div className="absolute top-4 right-4 px-2 py-0.5 bg-blue-500/20 border border-blue-500/30 rounded-full">
+                                            <span className="text-[9px] text-blue-300 font-bold tracking-widest uppercase">Sample</span>
+                                        </div>
+                                        <h3 className="text-lg font-semibold mb-4 text-white/90 flex items-center gap-2">
+                                            <span>🤖</span> AI Coach Feedback
+                                        </h3>
+                                        {/* Wrap in space-y-4 to match real card layout exactly */}
+                                        <div className="space-y-4">
+                                            {/* Focus callout */}
+                                            <div className="border-l-2 border-yellow-400/60 pl-3 py-0.5">
+                                                <p className="text-xs font-medium text-yellow-300 leading-relaxed">
+                                                    <span className="text-white/50 mr-1">Focus on Comms:</span>
+                                                    Tighten transitions between your ideas.
+                                                </p>
+                                            </div>
+                                            {/* Score breakdown */}
+                                            <div className="grid grid-cols-3 gap-2 mb-4">
+                                                {[
+                                                    { label: 'Content', score: 80, hint: 'Strong' },
+                                                    { label: 'Comms', score: 75, hint: 'Clarify ideas' },
+                                                    { label: 'Delivery', score: 78, hint: 'Confident' },
+                                                ].map(({ label, score, hint }) => (
+                                                    <div key={label} className="bg-white/5 rounded-xl p-3 text-center">
+                                                        <div className="text-[10px] text-white/40 uppercase tracking-wide mb-1">{label}</div>
+                                                        <div className="text-xl font-bold text-green-400">{score}</div>
+                                                        <div className="text-[10px] text-white/30">/100</div>
+                                                        <div className="text-[10px] text-white/40 mt-0.5 leading-tight">{hint}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <p className="text-white/80 text-sm leading-relaxed">
+                                                Your answer had a strong opening but could benefit from a more specific example when discussing your experience. Try using the STAR method — Situation, Task, Action, Result — to structure your response. You maintained good eye contact for the first 30 seconds but looked away during the middle of your answer.
+                                            </p>
+                                            <div>
+                                                <h4 className="text-green-300 text-xs font-semibold mb-2">✓ Strengths</h4>
+                                                <ul className="space-y-1">
+                                                    <li className="text-white/70 text-xs">• Strong opening line that clearly states your role and experience level.</li>
+                                                    <li className="text-white/70 text-xs">• Good energy and vocal pacing throughout the answer.</li>
+                                                </ul>
+                                            </div>
+                                            <div>
+                                                <h4 className="text-yellow-300 text-xs font-semibold mb-2">→ Areas to Improve</h4>
+                                                <ul className="space-y-1">
+                                                    <li className="text-white/70 text-xs">• Add a specific metric or project outcome to support your claims.</li>
+                                                    <li className="text-white/70 text-xs">• Maintain consistent eye contact throughout your full response.</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Demo Performance Metrics Card */}
+                                    <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6 space-y-5">
+                                        <div className="absolute top-4 right-4 px-2 py-0.5 bg-blue-500/20 border border-blue-500/30 rounded-full">
+                                            <span className="text-[9px] text-blue-300 font-bold tracking-widest uppercase">Sample</span>
+                                        </div>
+                                        <h3 className="text-lg font-semibold mb-2 text-white/90 flex items-center gap-2">
+                                            <span>📊</span> Performance Metrics
+                                        </h3>
+                                        {/* Speech Analysis */}
+                                        <div className="space-y-4">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <div className="w-1 h-1 rounded-full bg-blue-400"></div>
+                                                <span className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">Speech Analysis</span>
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-xs mb-1 text-white/60">
+                                                    <span>Clarity</span><span>82%</span>
+                                                </div>
+                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-gradient-to-r from-green-400 to-emerald-300 transition-all duration-1000" style={{ width: '82%' }} />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-xs mb-1 text-white/60">
+                                                    <span>Pacing</span><span>80%</span>
+                                                </div>
+                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-gradient-to-r from-blue-400 to-cyan-300 transition-all duration-1000" style={{ width: '80%' }} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/* Video Analysis — matches real card's 3-bar layout */}
+                                        <div className="space-y-4 pt-4 border-t border-white/10">
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <div className="w-1 h-1 rounded-full bg-purple-400"></div>
+                                                <span className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">Video Analysis</span>
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-xs mb-1 text-white/60">
+                                                    <span>Eye Contact</span><span>71%</span>
+                                                </div>
+                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-gradient-to-r from-purple-400 to-violet-300 transition-all duration-1000" style={{ width: '71%' }} />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-xs mb-1 text-white/60">
+                                                    <span>Gaze Stability</span><span>75%</span>
+                                                </div>
+                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-gradient-to-r from-pink-400 to-rose-300 transition-all duration-1000" style={{ width: '75%' }} />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div className="flex justify-between text-xs mb-1 text-white/60">
+                                                    <span>Overall Presence</span><span>73%</span>
+                                                </div>
+                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-gradient-to-r from-orange-400 to-red-400 transition-all duration-1000" style={{ width: '73%' }} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/* Stats Row */}
+                                        <div className="grid grid-cols-2 gap-4 pt-2">
+                                            <div className="bg-white/5 rounded-xl p-3">
+                                                <div className="text-[10px] text-white/50 uppercase tracking-wider mb-1">Words/Min</div>
+                                                <div className="text-2xl font-bold text-green-400">134</div>
+                                                <div className="text-[10px] text-white/30 mt-0.5">ideal: 120–150</div>
+                                            </div>
+                                            <div className="bg-white/5 rounded-xl p-3">
+                                                <div className="text-[10px] text-white/50 uppercase tracking-wider mb-1">Filler Words</div>
+                                                <div className="text-2xl font-bold text-yellow-300">4</div>
+                                                <div className="text-[10px] text-white/30 mt-0.5">2.0/min</div>
+                                            </div>
+                                        </div>
+                                        {/* Expression */}
+                                        <div className="pt-2 border-t border-white/10">
+                                            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center gap-2">
+                                                <div className="w-1 h-1 rounded-full bg-indigo-400"></div>
+                                                <span className="font-semibold">Expression</span>
+                                            </div>
+                                            <div className="flex flex-col gap-1.5">
+                                                <div className="bg-white/5 border border-white/10 self-start px-3 py-1 rounded-full">
+                                                    <span className="text-xs font-medium text-white/80">Neutral</span>
+                                                </div>
+                                                <p className="text-[11px] text-white/50 leading-relaxed">
+                                                    Try adding vocal energy and micro-smiles on key points.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* CTA Section */}
+                                <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                    <h2 className="text-2xl font-bold text-white mb-2">Ready to get your real analysis?</h2>
+                                    <p className="text-white/60 text-sm mb-6 max-w-md mx-auto">
+                                        {subscriptionStatus.canStartSession
+                                            ? 'Record your answers in your next session to unlock personalized AI coaching tailored to your responses.'
+                                            : 'Upgrade to Pro to practice unlimited sessions and track your improvement over time.'}
+                                    </p>
+                                    {subscriptionStatus.canStartSession ? (
+                                        <Link
+                                            href="/"
+                                            onClick={() => clearSession()}
+                                            className="inline-flex items-center gap-2 bg-white text-black font-semibold px-8 py-3 rounded-full hover:bg-white/90 active:bg-white/80 transition-all duration-200 text-sm"
+                                        >
+                                            Start Your Free Session
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                            </svg>
+                                        </Link>
+                                    ) : (
+                                        <Link
+                                            href="/#pricing"
+                                            className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-violet-500 hover:from-blue-400 hover:to-violet-400 text-white font-semibold px-8 py-3 rounded-full transition-all duration-200 shadow-lg hover:shadow-blue-500/30 text-sm"
+                                        >
+                                            Upgrade to Pro for Unlimited Practice
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                            </svg>
+                                        </Link>
+                                    )}
+                                </div>
+
+                                {/* Questions From This Session */}
+                                {questions.length > 0 && (
+                                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                        <div className="mb-4">
+                                            <h3 className="text-base font-semibold text-white/80 flex items-center gap-2">
+                                                <span>📋</span> Questions From This Session
+                                            </h3>
+                                            <p className="text-xs text-white/40 mt-1">These were generated for your session — use them to prepare for next time.</p>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {questions.map((q, idx) => (
+                                                <div key={q.id} className="flex gap-3 p-4 bg-white/5 border border-white/8 rounded-2xl hover:bg-white/8 transition-colors">
+                                                    <span className="text-[10px] text-white/40 font-semibold uppercase tracking-wider mt-0.5 flex-shrink-0 w-6">Q{idx + 1}</span>
+                                                    <div>
+                                                        <p className="text-sm text-white/80 leading-relaxed">{q.text}</p>
+                                                        <div className="flex items-center gap-2 mt-1.5">
+                                                            <span className="text-[10px] text-white/30 capitalize">{q.type?.replace(/-/g, ' ')}</span>
+                                                            {q.difficulty && (
+                                                                <>
+                                                                    <span className="text-[10px] text-white/20">·</span>
+                                                                    <span className="text-[10px] text-white/30">Difficulty {q.difficulty}/5</span>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
 
                         {/* Question Being Reviewed */}
                         {selectedRecording && (

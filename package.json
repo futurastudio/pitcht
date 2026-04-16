@@ -11,7 +11,9 @@
     "lint": "next lint",
     "electron-build": "tsc -p tsconfig.electron.json && electron-builder",
     "verify-env": "node scripts/verify-env.js",
-    "pre-deploy": "npm run verify-env && npm run build"
+    "pre-deploy": "npm run verify-env && npm run build",
+    "smoke-test": "npx tsx scripts/smoke-test.ts",
+    "smoke-test:prod": "BASE_URL=https://app.pitcht.us npx tsx scripts/smoke-test.ts"
   },
   "build": {
     "appId": "us.pitcht.app",

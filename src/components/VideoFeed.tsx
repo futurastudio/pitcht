@@ -1,72 +1,273 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { usePathname } from 'next/navigation';
 import { FaceTracker } from '@/services/faceTracker';
 import type { EyeTrackingMetrics } from '@/services/faceTracker';
+import { useCameraStatus } from '@/context/CameraContext';
+
+type Browser = 'chrome' | 'safari' | 'firefox' | 'other';
+
+function detectBrowser(): Browser {
+    if (typeof navigator === 'undefined') return 'other';
+    const ua = navigator.userAgent;
+    if (/Firefox\/[\d.]+/i.test(ua)) return 'firefox';
+    // Safari reports "Version/x.x" and "Safari" but NOT "Chrome"
+    if (/Version\/[\d.]+ .*Safari/i.test(ua) && !/Chrome/i.test(ua)) return 'safari';
+    if (/Chrome\/[\d.]+/i.test(ua)) return 'chrome';
+    return 'other';
+}
+
+// ─── Permission Recovery Card ────────────────────────────────────────────────
+
+interface PermissionCardProps {
+    browser: Browser;
+    onRetry: () => void;
+    onSkip: () => void;
+    isRetrying: boolean;
+}
+
+function PermissionCard({ browser, onRetry, onSkip, isRetrying }: PermissionCardProps) {
+    const instructions: Record<Browser, { steps: string[] }> = {
+        chrome: {
+            steps: [
+                'Click the camera icon (🎥) in your browser\'s address bar',
+                'Select "Always allow" for both camera and microphone',
+                'Click "Try Again" below — no refresh needed',
+            ],
+        },
+        safari: {
+            steps: [
+                'Open Safari → Settings (⌘,) → Websites → Camera',
+                'Find app.pitcht.us and set it to "Allow"',
+                'Do the same under Websites → Microphone',
+                'Return here and click "Try Again"',
+            ],
+        },
+        firefox: {
+            steps: [
+                'Click the camera icon in the address bar',
+                'Remove the blocked permission by clicking the × next to it',
+                'Click "Try Again" — Firefox will prompt again',
+            ],
+        },
+        other: {
+            steps: [
+                'Open your browser settings → Site permissions',
+                'Find Camera and Microphone → allow this site',
+                'Return here and click "Try Again"',
+            ],
+        },
+    };
+
+    const { steps } = instructions[browser];
+
+    return (
+        // Full-screen overlay — z-50 at root so it sits above the interview page UI
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm p-4">
+            <div className="w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl rounded-3xl p-8 animate-in fade-in zoom-in duration-200">
+
+                {/* Icon */}
+                <div className="flex items-center justify-center w-16 h-16 rounded-full bg-red-500/20 border border-red-500/30 mx-auto mb-6">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-red-400">
+                        {/* Camera body */}
+                        <path d="M23 7l-7 5 7 5V7z" />
+                        <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                        {/* X slash across camera */}
+                        <line x1="1" y1="1" x2="23" y2="23" strokeWidth="2" />
+                    </svg>
+                </div>
+
+                {/* Heading */}
+                <h2 className="text-xl font-bold text-white text-center mb-2">
+                    Camera access required
+                </h2>
+                <p className="text-white/60 text-sm text-center mb-6 leading-relaxed">
+                    Pitcht needs your camera and microphone to record your answers and generate AI feedback.
+                </p>
+
+                {/* Try Again */}
+                <button
+                    onClick={onRetry}
+                    disabled={isRetrying}
+                    className="w-full py-3 rounded-2xl text-sm font-bold text-black bg-white hover:bg-white/90 disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-lg mb-4 flex items-center justify-center gap-2"
+                >
+                    {isRetrying ? (
+                        <>
+                            <div className="w-4 h-4 border-2 border-black/20 border-t-black rounded-full animate-spin" />
+                            Requesting access…
+                        </>
+                    ) : (
+                        <>
+                            {/* Refresh icon */}
+                            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="23 4 23 10 17 10" />
+                                <polyline points="1 20 1 14 7 14" />
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                            </svg>
+                            Try Again
+                        </>
+                    )}
+                </button>
+
+                {/* Browser-specific instructions */}
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-4">
+                    <p className="text-white/50 text-[11px] font-semibold uppercase tracking-wider mb-3">
+                        {browser === 'chrome' && 'Chrome instructions'}
+                        {browser === 'safari' && 'Safari instructions'}
+                        {browser === 'firefox' && 'Firefox instructions'}
+                        {browser === 'other' && 'How to allow access'}
+                    </p>
+                    <ol className="space-y-2">
+                        {steps.map((step, i) => (
+                            <li key={i} className="flex items-start gap-2.5">
+                                <span className="flex-shrink-0 w-5 h-5 rounded-full bg-white/10 text-white/60 text-[11px] font-bold flex items-center justify-center mt-0.5">
+                                    {i + 1}
+                                </span>
+                                <span className="text-white/70 text-sm leading-snug">{step}</span>
+                            </li>
+                        ))}
+                    </ol>
+                </div>
+
+                {/* Skip link */}
+                <button
+                    onClick={onSkip}
+                    className="w-full py-2.5 text-sm text-white/40 hover:text-white/70 transition-colors text-center"
+                >
+                    Skip recording for now →
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function VideoFeed() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioRecorderRef = useRef<MediaRecorder | null>(null); // Separate audio recorder for transcription
+    const audioRecorderRef = useRef<MediaRecorder | null>(null);
     const chunksRef = useRef<Blob[]>([]);
-    const audioChunksRef = useRef<Blob[]>([]); // Audio-only chunks
-    const [error, setError] = useState<string | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    // Track the live stream so we can stop it before each new getUserMedia call
+    const streamRef = useRef<MediaStream | null>(null);
+
     const [tracker] = useState(() => FaceTracker.getInstance());
     const [isTrackerReady, setIsTrackerReady] = useState(false);
     const [isCurrentlyRecording, setIsCurrentlyRecording] = useState(false);
     const [faceTrackingFailed, setFaceTrackingFailed] = useState(false);
+    const [isRetrying, setIsRetrying] = useState(false);
 
-    // Initialize MediaPipe face tracker when video is ready
+    const { cameraStatus, setCameraStatus } = useCameraStatus();
+    const pathname = usePathname();
+
+    // Detect browser once (client side only)
+    const [browser] = useState<Browser>(() =>
+        typeof window !== 'undefined' ? detectBrowser() : 'other'
+    );
+
+    // ── Face tracker setup ──────────────────────────────────────────────────
     useEffect(() => {
-        if (videoRef.current && !isTrackerReady) {
+        if (videoRef.current && !isTrackerReady && cameraStatus === 'ready') {
             tracker.initialize(videoRef.current)
-                .then(() => {
-                    setIsTrackerReady(true);
-                })
+                .then(() => setIsTrackerReady(true))
                 .catch((err: Error) => {
                     console.warn('Face tracker failed to initialize (continuing without eye tracking):', err);
                     setFaceTrackingFailed(true);
                 });
         }
-    }, [tracker, isTrackerReady]);
+    }, [tracker, isTrackerReady, cameraStatus]);
 
-    // Start eye contact tracking when recording begins
-    // Note: Don't stop tracking here - metrics are retrieved in window.stopRecording()
+    // ── Eye tracking start/stop ─────────────────────────────────────────────
     useEffect(() => {
         if (!isTrackerReady) return;
-
         if (isCurrentlyRecording) {
-            // Start tracking when recording begins
-            try {
-                tracker.startTracking();
-            } catch (err) {
+            try { tracker.startTracking(); } catch (err) {
                 console.warn('Failed to start eye tracking:', err);
             }
         }
-        // Metrics will be retrieved by window.stopRecording() before tracker is stopped
     }, [isCurrentlyRecording, isTrackerReady, tracker]);
 
-    useEffect(() => {
-        // Expose recording methods to window for access by other components (temporary MVP pattern)
-        // A better React pattern would be to lift this state up or use a Ref in Context.
-        // Let's use the window pattern for simplicity as we moved this to Layout.
+    // ── Camera acquisition (also called on retry) ───────────────────────────
+    const setupCamera = useCallback(async () => {
+        // Stop any existing stream before requesting a new one
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
+        }
 
-        // @ts-expect-error -- attaching to window for cross-component access (MVP pattern)
+        setIsRetrying(true);
+        setCameraStatus('loading');
+
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: 'user',
+                },
+                audio: true,
+            });
+
+            streamRef.current = stream;
+            if (videoRef.current) videoRef.current.srcObject = stream;
+
+            // Video recorder (video + audio for storage/playback)
+            const videoOptions: MediaRecorderOptions = {
+                mimeType: 'video/webm;codecs=vp8,opus',
+                videoBitsPerSecond: 1200000, // 1.2 Mbps
+                audioBitsPerSecond: 128000,
+            };
+            let finalOptions = videoOptions;
+            if (!MediaRecorder.isTypeSupported(videoOptions.mimeType!)) {
+                console.warn('VP8/Opus not supported, using default codec');
+                finalOptions = { videoBitsPerSecond: 1200000, audioBitsPerSecond: 128000 };
+            }
+            const mediaRecorder = new MediaRecorder(stream, finalOptions);
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) chunksRef.current.push(e.data);
+            };
+            mediaRecorderRef.current = mediaRecorder;
+
+            // Audio-only recorder (smaller files for Whisper transcription)
+            const audioStream = new MediaStream(stream.getAudioTracks());
+            const audioRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
+            audioRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) audioChunksRef.current.push(e.data);
+            };
+            audioRecorderRef.current = audioRecorder;
+
+            setCameraStatus('ready');
+        } catch (err) {
+            console.error('Camera access denied:', err);
+            setCameraStatus('denied');
+        } finally {
+            setIsRetrying(false);
+        }
+    // setCameraStatus from useState is stable — safe with empty deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [setCameraStatus]);
+
+    // ── Window API + initial camera setup ──────────────────────────────────
+    useEffect(() => {
+        // @ts-expect-error -- window injection (MVP pattern, shared with interview page)
         window.startRecording = () => {
             if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'inactive') {
                 chunksRef.current = [];
                 audioChunksRef.current = [];
                 mediaRecorderRef.current.start();
-                // Start audio-only recording for transcription
                 if (audioRecorderRef.current && audioRecorderRef.current.state === 'inactive') {
                     audioRecorderRef.current.start();
                 }
-                // Defer state update to avoid updating during render
                 setTimeout(() => setIsCurrentlyRecording(true), 0);
             }
         };
 
-        // @ts-expect-error -- attaching to window for cross-component access (MVP pattern)
+        // @ts-expect-error -- window injection (MVP pattern)
         window.stopRecording = async () => {
             return new Promise<{ blob: Blob; audioBlob: Blob; eyeTracking: EyeTrackingMetrics | null }>((resolve) => {
                 if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -74,51 +275,35 @@ export default function VideoFeed() {
                     let audioBlob: Blob | null = null;
                     let eyeTracking: EyeTrackingMetrics | null = null;
 
-                    // Handler for when BOTH recorders have stopped
                     const checkBothStopped = () => {
                         if (videoBlob !== null && audioBlob !== null) {
-                            // Defer state update to avoid updating during render
                             setTimeout(() => setIsCurrentlyRecording(false), 0);
                             resolve({ blob: videoBlob, audioBlob, eyeTracking });
                         }
                     };
 
-                    // CRITICAL: Set up BOTH onstop handlers BEFORE stopping any recorder
-                    // This prevents race condition where one recorder stops before the other's handler is set
-
-                    // Set up video recorder stop handler
                     mediaRecorderRef.current.onstop = () => {
                         videoBlob = new Blob(chunksRef.current, { type: 'video/webm' });
-
-                        // Get eye tracking metrics BEFORE stopping tracker
                         try {
                             const metrics = tracker.getMetrics();
-
-                            if (metrics && metrics.totalFrames > 0) {
-                                eyeTracking = metrics;
-                            }
-                            // Now stop the tracker to clean up
+                            if (metrics && metrics.totalFrames > 0) eyeTracking = metrics;
                             tracker.stopTracking();
                         } catch (err) {
                             console.warn('Failed to get eye tracking metrics:', err);
                         }
-
                         checkBothStopped();
                     };
 
-                    // Set up audio recorder stop handler (or fallback to empty blob)
                     if (audioRecorderRef.current && audioRecorderRef.current.state === 'recording') {
                         audioRecorderRef.current.onstop = () => {
                             audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                             checkBothStopped();
                         };
                     } else {
-                        // No audio recorder available, use empty blob and don't wait for it
-                        console.warn('⚠️ Audio recorder not available - using empty audio blob');
+                        console.warn('⚠️ Audio recorder not available — using empty audio blob');
                         audioBlob = new Blob([], { type: 'audio/webm' });
                     }
 
-                    // NOW stop both recorders (handlers are already set up)
                     if (audioRecorderRef.current && audioRecorderRef.current.state === 'recording') {
                         audioRecorderRef.current.stop();
                     }
@@ -128,115 +313,76 @@ export default function VideoFeed() {
                     resolve({
                         blob: new Blob([], { type: 'video/webm' }),
                         audioBlob: new Blob([], { type: 'audio/webm' }),
-                        eyeTracking: null
+                        eyeTracking: null,
                     });
                 }
             });
         };
 
-        async function setupCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        // 720p is sufficient for face tracking and recording quality.
-                        // 1080p was causing visible camera stutter due to MediaPipe
-                        // processing a full 1920x1080 frame on every animation frame.
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        facingMode: 'user',
-                    },
-                    audio: true,
-                });
-
-                if (videoRef.current) {
-                    videoRef.current.srcObject = stream;
-                }
-
-                // Video recorder (video + audio for storage/playback)
-                // Use lower bitrate to keep 5-minute videos under 50MB Supabase limit
-                // Bitrate: 1.5 Mbps = ~11.25 MB per minute = ~56MB for 5 minutes (still slightly over)
-                // Bitrate: 1.2 Mbps = ~9 MB per minute = ~45MB for 5 minutes (safely under 50MB)
-                const videoOptions: MediaRecorderOptions = {
-                    mimeType: 'video/webm;codecs=vp8,opus',
-                    videoBitsPerSecond: 1200000, // 1.2 Mbps - good quality, smaller files
-                    audioBitsPerSecond: 128000,  // 128 kbps - high quality audio
-                };
-
-                // Fallback if codecs not supported
-                let finalOptions = videoOptions;
-                if (!MediaRecorder.isTypeSupported(videoOptions.mimeType!)) {
-                    console.warn('VP8/Opus not supported, using default codec');
-                    finalOptions = {
-                        videoBitsPerSecond: 1200000,
-                        audioBitsPerSecond: 128000,
-                    };
-                }
-
-                const mediaRecorder = new MediaRecorder(stream, finalOptions);
-                mediaRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) {
-                        chunksRef.current.push(e.data);
-                    }
-                };
-                mediaRecorderRef.current = mediaRecorder;
-
-                // Audio-only recorder (for efficient transcription - much smaller files)
-                // Extract only audio track from stream
-                const audioStream = new MediaStream(stream.getAudioTracks());
-                const audioRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
-                audioRecorder.ondataavailable = (e) => {
-                    if (e.data.size > 0) {
-                        audioChunksRef.current.push(e.data);
-                    }
-                };
-                audioRecorderRef.current = audioRecorder;
-
-            } catch (err) {
-                console.error('Error accessing camera:', err);
-                setError('Could not access camera/microphone. Please allow permissions.');
-            }
-        }
-
         setupCamera();
 
         return () => {
-            if (videoRef.current && videoRef.current.srcObject) {
-                const stream = videoRef.current.srcObject as MediaStream;
-                stream.getTracks().forEach((track) => track.stop());
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(t => t.stop());
             }
         };
-    }, []);
+    }, [setupCamera, tracker]);
 
-    if (error) {
-        return (
-            <div className="fixed inset-0 z-0 flex items-center justify-center bg-black text-white">
-                <p>{error}</p>
-            </div>
-        );
-    }
+    // ── Render ──────────────────────────────────────────────────────────────
 
     return (
-        <div className="fixed inset-0 z-0 w-full h-full bg-black">
-            <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover transform scale-x-[-1]"
-            />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/30 pointer-events-none" />
-            {faceTrackingFailed && (
-                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-yellow-500/20 border border-yellow-500/40 backdrop-blur-md px-4 py-2 rounded-full pointer-events-none">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-300 flex-shrink-0">
-                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-                        <line x1="12" y1="9" x2="12" y2="13"></line>
-                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
-                    </svg>
-                    <span className="text-yellow-200 text-xs font-medium">
-                        Eye contact tracking unavailable — check camera permissions. Eye contact metrics won&apos;t be recorded.
-                    </span>
-                </div>
+        <>
+            {/*
+             * The video element is always in the DOM so videoRef.current is always
+             * valid — setupCamera() can assign srcObject even while the feed is
+             * hidden (e.g. before permissions are granted or after retry).
+             */}
+            <div
+                className="fixed inset-0 z-0 w-full h-full bg-black"
+                style={{ visibility: cameraStatus === 'ready' ? 'visible' : 'hidden' }}
+            >
+                <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-cover transform scale-x-[-1]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/30 pointer-events-none" />
+                {faceTrackingFailed && (
+                    <div className="absolute top-20 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-yellow-500/20 border border-yellow-500/40 backdrop-blur-md px-4 py-2 rounded-full pointer-events-none">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-yellow-300 flex-shrink-0">
+                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                            <line x1="12" y1="9" x2="12" y2="13"></line>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                        </svg>
+                        <span className="text-yellow-200 text-xs font-medium">
+                            Eye contact tracking unavailable — check camera permissions. Eye contact metrics won&apos;t be recorded.
+                        </span>
+                    </div>
+                )}
+            </div>
+
+            {/* Dark background when loading, skipped, or denied on non-interview pages */}
+            {cameraStatus !== 'ready' && (
+                <div className="fixed inset-0 z-0 bg-black" />
             )}
-        </div>
+
+            {/*
+             * Permission recovery card — shown on /interview when denied OR
+             * while a retry request is in-flight (so the card doesn't flash
+             * away during the loading gap between 'denied' → 'loading' → result).
+             * z-50 at root level: sits above all interview page UI (z-10 page
+             * wrapper, z-20 controls, z-30 nav, z-40 timeout banner).
+             */}
+            {(cameraStatus === 'denied' || isRetrying) && pathname === '/interview' && (
+                <PermissionCard
+                    browser={browser}
+                    onRetry={setupCamera}
+                    onSkip={() => setCameraStatus('skipped')}
+                    isRetrying={isRetrying}
+                />
+            )}
+        </>
     );
 }

@@ -3,12 +3,12 @@
 import { apiFetch } from '@/utils/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import Prompter from '@/components/Prompter';
 import Controls from '@/components/Controls';
 import ContextModal from '@/components/ContextModal';
 import { useInterview } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
+import { useCameraStatus } from '@/context/CameraContext';
 import { supabase } from '@/services/supabase';
 import { analyzeVideoPath } from '@/services/emotionAnalyzer';
 import { calculatePresenceScore } from '@/services/videoAnalyzer';
@@ -18,8 +18,9 @@ import { toast } from 'sonner';
 
 export default function InterviewPage() {
     const router = useRouter();
-    const { addRecording, updateRecording, sessionType, sessionContext, questions, sessionId } = useInterview();
+    const { addRecording, updateRecording, sessionType, sessionContext, questions, sessionId, recordings } = useInterview();
     const { user, loading: authLoading } = useAuth();
+    const { cameraStatus } = useCameraStatus();
 
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [isRecording, setIsRecording] = useState(false);
@@ -30,6 +31,15 @@ export default function InterviewPage() {
     const [recordingDuration, setRecordingDuration] = useState(0);
     const [sessionElapsed, setSessionElapsed] = useState(0); // Total session time in seconds
     const [countdown, setCountdown] = useState<number | null>(null); // Countdown before recording starts
+    const [showExitDialog, setShowExitDialog] = useState(false);
+    const [pendingExitPath, setPendingExitPath] = useState<string | null>(null);
+
+    // Mirror recordings.length into a ref so it's readable synchronously
+    // inside the sendBeacon callback (which fires during page unload).
+    const recordingsCountRef = useRef(0);
+    useEffect(() => {
+        recordingsCountRef.current = recordings.length;
+    }, [recordings]);
 
     // Keep the Supabase access token available synchronously for the sendBeacon
     // callback — beacon fires during page unload where we cannot await async calls.
@@ -75,6 +85,10 @@ export default function InterviewPage() {
 
         const sendCompletionBeacon = () => {
             if (!sessionId) return;
+            // Guard: only mark as completed if the user actually recorded at least one answer.
+            // If they never granted camera permission or skipped everything, the session
+            // stays in_progress and does NOT consume their free trial.
+            if (recordingsCountRef.current === 0) return;
             // Use sendBeacon for reliable delivery during page unload.
             // sendBeacon cannot set headers, so auth token is passed in the body.
             // accessTokenRef is kept current by the onAuthStateChange effect above.
@@ -89,8 +103,15 @@ export default function InterviewPage() {
             }
         };
 
-        const handleBeforeUnload = () => {
-            sendCompletionBeacon();
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (recordingsCountRef.current === 0) {
+                // Nudge the user with the browser's native "Leave site?" dialog.
+                // Modern browsers show a generic message regardless of returnValue text.
+                e.preventDefault();
+                e.returnValue = ''; // Required for Chrome/Edge to show the dialog
+            } else {
+                sendCompletionBeacon();
+            }
         };
 
         document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -542,6 +563,19 @@ export default function InterviewPage() {
         if (currentQuestionIndex < questions.length - 1) {
             setCurrentQuestionIndex(prev => prev + 1);
         } else {
+            // Guard: if the user reaches the end without recording anything, handle
+            // based on whether they're in skip mode or just haven't recorded yet.
+            if (recordings.length === 0) {
+                if (cameraStatus === 'skipped') {
+                    // User intentionally browsed in read-only mode — go home quietly.
+                    router.push('/');
+                } else {
+                    // Show confirmation dialog (session won't be consumed).
+                    setShowExitDialog(true);
+                    setPendingExitPath('/');
+                }
+                return;
+            }
             // Mark session as completed before navigating
             if (sessionId) {
                 try {
@@ -552,6 +586,17 @@ export default function InterviewPage() {
                 }
             }
             router.push('/analysis');
+        }
+    };
+
+    const handleBack = () => {
+        // In skip mode the user intentionally chose not to record — go home silently.
+        // Otherwise show the "no recordings" confirmation if they haven't recorded yet.
+        if (recordings.length === 0 && cameraStatus !== 'skipped') {
+            setShowExitDialog(true);
+            setPendingExitPath('/');
+        } else {
+            router.push('/');
         }
     };
 
@@ -568,6 +613,20 @@ export default function InterviewPage() {
                         </div>
                         <p className="text-xl text-white/80 mt-4">Get ready...</p>
                     </div>
+                </div>
+            )}
+
+            {/* Skip-mode banner — camera permissions were skipped */}
+            {cameraStatus === 'skipped' && (
+                <div className="absolute top-0 left-0 right-0 z-40 flex items-center justify-center gap-2.5 px-6 py-2.5 bg-blue-500/20 border-b border-blue-500/30 backdrop-blur-md pointer-events-none">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-300 flex-shrink-0">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                    <span className="text-blue-100 text-xs font-semibold tracking-wide">
+                        Enable your camera to record answers and get AI feedback
+                    </span>
                 </div>
             )}
 
@@ -594,14 +653,15 @@ export default function InterviewPage() {
             <div className="absolute top-6 left-6 right-6 z-30 flex justify-between items-start pointer-events-none">
                 {/* Left side: Back Button + Recording Timer + Transcribing Indicator */}
                 <div className="pointer-events-auto flex items-center gap-3">
-                    <Link
-                        href="/"
+                    <button
+                        onClick={handleBack}
                         className="flex items-center justify-center w-10 h-10 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 text-white hover:bg-white/20 transition-all"
+                        aria-label="Go back"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="15 18 9 12 15 6"></polyline>
                         </svg>
-                    </Link>
+                    </button>
 
                     {/* Recording Timer */}
                     {isRecording && (
@@ -693,6 +753,7 @@ export default function InterviewPage() {
                 currentQuestionIndex={currentQuestionIndex}
                 recordingDuration={recordingDuration}
                 isTranscribing={false} // Always false now - transcription runs in background
+                recordingDisabled={cameraStatus === 'skipped'}
             />
 
             <ContextModal
@@ -701,6 +762,51 @@ export default function InterviewPage() {
                 onSave={setInterviewContext}
                 initialContext={interviewContext}
             />
+
+            {/* Exit Without Recording Dialog */}
+            {showExitDialog && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="relative w-full max-w-md mx-4 bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl rounded-3xl p-8 animate-in fade-in zoom-in duration-200">
+                        {/* Icon */}
+                        <div className="flex items-center justify-center w-14 h-14 rounded-full bg-amber-400/20 border border-amber-400/30 mx-auto mb-5">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-300">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                                <line x1="12" y1="9" x2="12" y2="13"></line>
+                                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                            </svg>
+                        </div>
+
+                        {/* Title */}
+                        <h2 className="text-xl font-bold text-white text-center mb-2">
+                            Leave without recording?
+                        </h2>
+
+                        {/* Body */}
+                        <p className="text-white/70 text-sm text-center leading-relaxed mb-7">
+                            You haven&apos;t recorded any answers yet. Record at least one answer to get AI feedback on your interview skills.
+                        </p>
+
+                        {/* Actions */}
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={() => setShowExitDialog(false)}
+                                className="w-full py-3 rounded-2xl text-sm font-bold text-black bg-white hover:bg-white/90 transition-colors shadow-lg"
+                            >
+                                Go Back &amp; Record
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowExitDialog(false);
+                                    if (pendingExitPath) router.push(pendingExitPath);
+                                }}
+                                className="w-full py-3 rounded-2xl text-sm font-semibold text-white/70 hover:text-white hover:bg-white/10 transition-colors"
+                            >
+                                Leave Anyway
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </main>
     );
 }
