@@ -173,7 +173,7 @@ No markdown, no code blocks, no explanations - just the raw JSON array.`;
     const message = await retryWithBackoff(async () => {
       return await anthropic.messages.create({
         model: 'claude-haiku-4-5', // ⚡ Latest Haiku (Oct 2025) - fast and cost-effective for question generation
-        max_tokens: 1000, // ⚡ Optimized: questions typically need ~800 tokens (was 1500)
+        max_tokens: 1500, // Headroom so 5–7 prompts with follow-up hints don't truncate mid-JSON
         system: [
           {
             type: 'text' as const,
@@ -196,11 +196,34 @@ No markdown, no code blocks, no explanations - just the raw JSON array.`;
       .map((block) => (block as { type: 'text'; text: string }).text)
       .join('');
 
-    // Strip markdown code blocks if present (Claude 4.x sometimes wraps JSON in ```json ... ```)
-    const cleanedResponse = responseText.trim().replace(/^```json\s*|\s*```$/g, '');
+    // Robust JSON-array extraction. Haiku occasionally:
+    //   - wraps the array in ```json … ``` or plain ``` … ```
+    //   - prepends a preamble ("Here are 5 prompts:")
+    //   - appends trailing prose ("Let me know if …")
+    // We grab the first '[' through its matching ']' so any of those are tolerated.
+    const extractJsonArray = (raw: string): string => {
+      const trimmed = raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
+      const start = trimmed.indexOf('[');
+      const end = trimmed.lastIndexOf(']');
+      if (start === -1 || end === -1 || end < start) return trimmed; // fall through to JSON.parse
+      return trimmed.slice(start, end + 1);
+    };
 
-    // Parse JSON response
-    const questions = JSON.parse(cleanedResponse) as Question[];
+    const cleanedResponse = extractJsonArray(responseText);
+
+    // Parse JSON response (log a slice of the raw text on failure so we can debug in prod)
+    let questions: Question[];
+    try {
+      questions = JSON.parse(cleanedResponse) as Question[];
+    } catch (parseError) {
+      console.error('generate-questions: JSON parse failed', {
+        sessionType,
+        rawHead: responseText.slice(0, 500),
+        rawTail: responseText.slice(-200),
+        cleanedHead: cleanedResponse.slice(0, 200),
+      });
+      throw parseError;
+    }
 
     // Replace string IDs with proper UUIDs for database compatibility
     // The database expects UUID for question_id, but Claude generates simple IDs like "q1", "q2"
