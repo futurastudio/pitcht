@@ -7,24 +7,31 @@ interface OnboardingModalProps {
     onComplete: () => void;
 }
 
+// These are a preview walkthrough, not an interactive picker — titles are
+// descriptive rather than imperative so users don't try to click the tiles
+// on step 1 expecting something to happen. Users will actually pick their
+// interview type from the home page after closing this overlay.
 const STEPS = [
     {
-        title: 'Pick Your Interview Type',
-        subtitle: 'Choose the type of practice you want — job interview, internship, or presentation.',
+        title: 'Three ways to practice',
+        subtitle: 'Job interviews, internships, or presentations — Pitcht generates the right questions for each.',
     },
     {
-        title: 'Add a Job Description',
-        subtitle: 'Paste a job posting and our AI generates questions tailored to the exact role. The more detail, the better.',
+        title: 'Paste a job description',
+        subtitle: 'Drop in a real job posting and the AI generates questions tailored to that exact role. The more detail, the sharper the questions.',
     },
     {
-        title: 'Record & Get AI Feedback',
-        subtitle: 'Answer on camera. Our AI analyzes your clarity, confidence, eye contact, and pace — then coaches you on how to improve.',
+        title: 'Record & get AI feedback',
+        subtitle: 'Answer on camera. The AI analyzes your clarity, confidence, eye contact, and pace — then coaches you on how to improve.',
     },
 ];
 
 function StepOne() {
+    // pointer-events-none + select-none make it clear these tiles are not
+    // clickable in the onboarding preview — the real picker lives on the
+    // home page after the user dismisses this overlay.
     return (
-        <div className="grid grid-cols-3 gap-2 my-5">
+        <div className="grid grid-cols-3 gap-2 my-5 pointer-events-none select-none">
             {[
                 { icon: '💼', label: 'Job Interview', color: 'from-blue-500/20 to-cyan-400/20' },
                 { icon: '🎯', label: 'Internship', color: 'from-orange-500/20 to-red-400/20' },

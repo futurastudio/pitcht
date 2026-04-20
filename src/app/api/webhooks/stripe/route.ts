@@ -47,41 +47,83 @@ export async function POST(request: Request) {
         const session = event.data.object as Stripe.Checkout.Session;
         console.log('Checkout session completed:', session.id);
 
-        // Get subscription details
         const subscriptionId = session.subscription as string;
         const customerId = session.customer as string;
         const userId = session.client_reference_id;
 
+        // Missing client_reference_id means our checkout creation didn't attach
+        // the Supabase user ID. Stripe retrying this event won't change the
+        // session payload, so 500 would just burn retry budget. Log every piece
+        // of correlating context we have (session id, customer id, email) so
+        // on-call can reconcile the payment to a user manually, then 200 to
+        // stop retries.
         if (!userId) {
-          console.error('No user ID found in session');
-          break;
+          console.error('[STRIPE_WEBHOOK_ALERT] checkout.session.completed missing client_reference_id — cannot auto-provision, manual reconcile required', {
+            sessionId: session.id,
+            customerId,
+            subscriptionId,
+            customerEmail: session.customer_details?.email ?? null,
+          });
+          return NextResponse.json({ received: true, warning: 'missing_user_id' });
         }
 
-        // SECURITY: Verify customer exists in current Stripe environment before saving
+        // Verify the Stripe customer exists in the same environment we're
+        // running in. This is a defensive check against test events hitting a
+        // live endpoint (or vice versa). There are two sub-cases:
+        //
+        //   (a) retrieve() throws  — could be transient (network flake) or
+        //       permanent (env mismatch / deleted customer that 404s). Return
+        //       500 so Stripe retries; a transient error will clear on its
+        //       own, and a genuine env mismatch will exhaust retries and
+        //       surface in the Stripe dashboard where we can see + fix it.
+        //       Previously this branch silently returned 200, meaning a
+        //       paying user could lose their subscription with no retry.
+        //
+        //   (b) customer.deleted === true  — the customer object was
+        //       explicitly deleted from Stripe between payment and this
+        //       event firing. Very rare. The payment already succeeded, so
+        //       the user is owed their Pro access. Log loudly for manual
+        //       review and fall through to provisioning. Previously this
+        //       branch silently returned 200, same silent-failure problem.
+        let customerDeleted = false;
         try {
           const customer = await stripe.customers.retrieve(customerId);
           if (customer.deleted) {
-            console.error(`❌ Customer ${customerId} is deleted - skipping subscription creation`);
-            break;
+            customerDeleted = true;
+            console.error('[STRIPE_WEBHOOK_ALERT] Stripe customer is deleted but payment succeeded — provisioning subscription anyway, manual review recommended', {
+              sessionId: session.id,
+              customerId,
+              subscriptionId,
+              userId,
+            });
+          } else {
+            console.log(`✅ Verified customer exists: ${customerId}`);
           }
-          console.log(`✅ Verified customer exists: ${customerId}`);
         } catch (customerError: unknown) {
-          console.error(`❌ Customer validation failed for ${customerId}:`, customerError instanceof Error ? customerError.message : customerError);
-          console.error('⚠️  This usually means test/live environment mismatch - subscription NOT saved to database');
-          // Do not create subscription if customer doesn't exist
-          break;
+          console.error('[STRIPE_WEBHOOK_ALERT] stripe.customers.retrieve failed — returning 500 so Stripe retries. Persistent failure usually indicates a test/live environment mismatch.', {
+            sessionId: session.id,
+            customerId,
+            error: customerError instanceof Error ? customerError.message : String(customerError),
+          });
+          return NextResponse.json(
+            { error: 'Customer verification failed, Stripe will retry' },
+            { status: 500 }
+          );
         }
 
         // Get the price ID and billing period from the subscription.
         // NOTE: In Stripe SDK v20, current_period_start/end moved from the
         // top-level subscription object to items.data[0] — always read from there.
+        // Any throw below (subscriptions.retrieve, createPremiumSubscription)
+        // bubbles to the outer catch which returns 500, which is the correct
+        // behaviour: Stripe's retry queue handles transient DB/API blips and
+        // createPremiumSubscription is idempotent.
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const priceId = subscription.items.data[0].price.id;
         const item = subscription.items.data[0] as unknown as { current_period_start: number; current_period_end: number };
         const periodStart = new Date(item.current_period_start * 1000);
         const periodEnd = new Date(item.current_period_end * 1000);
 
-        // Create/upsert subscription in database (idempotent — safe if verify-subscription ran first)
         await createPremiumSubscription(
           userId,
           subscriptionId,
@@ -91,7 +133,7 @@ export async function POST(request: Request) {
           periodEnd
         );
 
-        console.log(`✅ Subscription created for user: ${userId}`);
+        console.log(`✅ Subscription ${customerDeleted ? 'provisioned (customer deleted in Stripe — review)' : 'created'} for user: ${userId}`);
         break;
       }
 

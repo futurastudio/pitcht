@@ -6,6 +6,7 @@ import { AuthProvider } from "@/context/AuthContext";
 import { InterviewProvider } from "@/context/InterviewContext";
 import { CameraProvider } from "@/context/CameraContext";
 import VideoFeed from "@/components/VideoFeed";
+import GlobalOnboarding from "@/components/GlobalOnboarding";
 import { Toaster } from "sonner";
 
 const geistSans = Geist({
@@ -49,6 +50,9 @@ export default function RootLayout({
               <div className="relative z-10 w-full h-full">
                 {children}
               </div>
+              {/* First-time onboarding overlay — mounted globally so it fires
+                  on whichever route a new signup lands on (not just `/`). */}
+              <GlobalOnboarding />
             </CameraProvider>
           </InterviewProvider>
         </AuthProvider>

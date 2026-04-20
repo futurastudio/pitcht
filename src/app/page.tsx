@@ -5,7 +5,6 @@ import { useAuth } from '@/context/AuthContext';
 import SessionSetupModal from '@/components/SessionSetupModal';
 import PaywallModal from '@/components/PaywallModal';
 import Header from '@/components/Header';
-import OnboardingModal from '@/components/OnboardingModal';
 
 const SESSION_TYPES = [
   {
@@ -35,7 +34,6 @@ export default function Dashboard() {
   const [selectedSession, setSelectedSession] = useState<{ id: string, title: string } | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
-  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const { user, subscriptionStatus, refreshSubscriptionStatus } = useAuth();
 
@@ -44,32 +42,18 @@ export default function Dashboard() {
   // - returning from Stripe after paying → should show Pro
   // - returning from Stripe after cancelling → should still show free tier
   // - completing their free session and navigating back → should show paywall
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (user) {
       refreshSubscriptionStatus();
     }
+    // We only want this to run on mount, not every time user / the
+    // refreshSubscriptionStatus identity changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Show onboarding to new users only — account created within the last 10 minutes
-  // and the "seen" flag not yet set in localStorage.
-  // The 500ms delay prevents a flash when the user signed up mid-session-setup:
-  // if Next.js navigates to /interview before the timeout fires, the component
-  // unmounts and clearTimeout cancels it automatically.
-  useEffect(() => {
-    if (!user) return;
-    if (localStorage.getItem('pitcht_onboarding_seen')) return;
-    const createdAt = new Date(user.created_at);
-    const isNew = Date.now() - createdAt.getTime() < 10 * 60 * 1000;
-    if (!isNew) return;
-    const t = setTimeout(() => setShowOnboarding(true), 500);
-    return () => clearTimeout(t);
-  }, [user]);
-
-  const handleOnboardingComplete = () => {
-    localStorage.setItem('pitcht_onboarding_seen', '1');
-    setShowOnboarding(false);
-  };
+  // Onboarding is now mounted globally in the root layout via
+  // <GlobalOnboarding />, so it fires on whichever route a new signup lands on
+  // (including /interview, which is the most common path). No trigger needed here.
 
   const isExhaustedFreeUser = user && !subscriptionStatus.isPremium && !subscriptionStatus.isTrialing && !subscriptionStatus.canStartSession;
 
@@ -154,11 +138,6 @@ export default function Dashboard() {
       <PaywallModal
         isOpen={showPaywall}
         onClose={() => setShowPaywall(false)}
-      />
-
-      <OnboardingModal
-        isOpen={showOnboarding}
-        onComplete={handleOnboardingComplete}
       />
 
       {/* Footer with Privacy Policy link */}

@@ -21,6 +21,12 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Sends a password reset email. The link in the email will route the user
+   *  to `/auth/reset-password` where they can set a new password. */
+  sendPasswordReset: (email: string) => Promise<void>;
+  /** Updates the current user's password. Call this on the
+   *  `/auth/reset-password` page after Supabase fires PASSWORD_RECOVERY. */
+  updatePassword: (newPassword: string) => Promise<void>;
   refreshSubscriptionStatus: () => Promise<void>;
 }
 
@@ -209,6 +215,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const sendPasswordReset = async (email: string) => {
+    // Supabase will email the user a link of the form
+    //   https://<supabase-project>.supabase.co/auth/v1/verify?token=...&type=recovery&redirect_to=<redirectTo>
+    // which, after verification, lands the browser at `redirectTo` with a
+    // recovery session. The /auth/reset-password page handles that session.
+    const redirectTo =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}/auth/reset-password`
+        : undefined;
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo,
+    });
+    if (error) throw error;
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) throw error;
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -219,6 +245,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signInWithGoogle,
         signUp,
         signOut,
+        sendPasswordReset,
+        updatePassword,
         refreshSubscriptionStatus,
       }}
     >
