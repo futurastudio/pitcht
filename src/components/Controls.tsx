@@ -22,6 +22,7 @@ export default function Controls({ isRecording, onToggleRecording, onPreviousQue
                 <button
                     onClick={onPreviousQuestion}
                     disabled={currentQuestionIndex === 0}
+                    aria-label="Previous question"
                     className={`backdrop-blur-lg border transition-all duration-200 p-4 rounded-full group ${
                         currentQuestionIndex === 0
                             ? 'bg-white/10 border-white/10 cursor-not-allowed opacity-50'
@@ -38,6 +39,7 @@ export default function Controls({ isRecording, onToggleRecording, onPreviousQue
                 <button
                     onClick={recordingDisabled ? undefined : onToggleRecording}
                     disabled={recordingDisabled}
+                    aria-label={isRecording ? 'Stop recording' : 'Start recording'}
                     title={recordingDisabled ? 'Enable your camera to record answers' : undefined}
                     className={`relative p-1 rounded-full border-2 transition-all duration-300 ${
                         recordingDisabled
@@ -69,6 +71,7 @@ export default function Controls({ isRecording, onToggleRecording, onPreviousQue
                 <button
                     onClick={onNextQuestion}
                     disabled={isTranscribing}
+                    aria-label="Next question"
                     className={`backdrop-blur-lg border transition-all duration-200 p-4 rounded-full group ${
                         isTranscribing
                             ? 'bg-white/10 border-white/10 cursor-not-allowed opacity-50'

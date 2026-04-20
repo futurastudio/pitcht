@@ -13,7 +13,10 @@
     "verify-env": "node scripts/verify-env.js",
     "pre-deploy": "npm run verify-env && npm run build",
     "smoke-test": "npx tsx scripts/smoke-test.ts",
-    "smoke-test:prod": "BASE_URL=https://app.pitcht.us npx tsx scripts/smoke-test.ts"
+    "smoke-test:prod": "BASE_URL=https://app.pitcht.us npx tsx scripts/smoke-test.ts",
+    "audit:bootstrap": "npx tsx scripts/audit-test-accounts.ts bootstrap",
+    "audit:e2e": "npx playwright test --config playwright.audit.config.ts",
+    "audit:digest": "npx tsx scripts/audit-digest.ts"
   },
   "build": {
     "appId": "us.pitcht.app",
@@ -83,6 +86,7 @@
     "twilio": "^5.12.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

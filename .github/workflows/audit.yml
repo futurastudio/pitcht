@@ -1,0 +1,112 @@
+name: Audit (health + smoke + E2E)
+
+on:
+  # Triggered by Vercel deployment webhook (repository_dispatch event_type = "vercel.deployment.succeeded")
+  repository_dispatch:
+    types: [vercel.deployment.succeeded, audit.manual]
+  # Scheduled runs in production
+  schedule:
+    # Full audit — 3x/day: 8am ET, 1pm ET, 8pm ET (covers work hours + late-night bugs)
+    - cron: '0 12 * * *'     # 12:00 UTC = 8am ET
+    - cron: '0 17 * * *'     # 17:00 UTC = 1pm ET
+    - cron: '0 0 * * *'      # 00:00 UTC = 8pm ET
+    # Daily email digest — 10am ET, one consolidated email if anything failed
+    - cron: '0 14 * * *'     # 14:00 UTC = 10am ET
+  workflow_dispatch:          # manual "Run workflow" button
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: false   # never cancel an in-flight audit run
+
+jobs:
+  # ---- Daily digest (runs only on the 14:00 cron) ---------------------------
+  digest:
+    if: github.event.schedule == '0 14 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Send daily digest email
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          AUDIT_DIGEST_FROM: ${{ secrets.AUDIT_DIGEST_FROM }}
+          AUDIT_DIGEST_TO: ${{ secrets.AUDIT_DIGEST_TO }}
+        run: npx tsx scripts/audit-digest.ts
+
+  # ---- Full audit run (deploy / manual / 3x-daily cron) --------------------
+  audit:
+    # Skip this job when the trigger is the 14:00 digest cron
+    if: github.event.schedule != '0 14 * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      # Layer 0 — health check. If /api/health is down, skip rest (noise floor).
+      - name: Health probe
+        id: health
+        run: |
+          code=$(curl -s -o /tmp/health.json -w "%{http_code}" https://app.pitcht.us/api/health)
+          echo "http_code=$code" >> "$GITHUB_OUTPUT"
+          cat /tmp/health.json || true
+          if [ "$code" != "200" ]; then
+            echo "::warning::health endpoint returned $code — skipping remaining stages"
+            exit 1
+          fi
+
+      # Layer 1 — API smoke. Uses the existing test harness against prod.
+      - name: API smoke test
+        if: steps.health.outcome == 'success'
+        env:
+          BASE_URL: https://app.pitcht.us
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: npx tsx scripts/smoke-test.ts
+
+      # Layer 2 — Playwright journey + Claude evaluator.
+      - name: Install Playwright browsers
+        if: steps.health.outcome == 'success'
+        run: npx playwright install --with-deps chromium
+
+      - name: Determine pooled account index
+        if: steps.health.outcome == 'success'
+        id: pool
+        run: |
+          # 5-account pool round-robin based on run number
+          idx=$(( ${{ github.run_number }} % 5 ))
+          echo "run_index=$idx" >> "$GITHUB_OUTPUT"
+
+      - name: Playwright E2E audit
+        if: steps.health.outcome == 'success'
+        env:
+          AUDIT_BASE_URL: https://app.pitcht.us
+          AUDIT_RUN_INDEX: ${{ steps.pool.outputs.run_index }}
+          AUDIT_TRIGGER: ${{ github.event_name == 'repository_dispatch' && 'deploy' || (github.event_name == 'schedule' && 'cron' || 'manual') }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          AUDIT_TEST_ACCOUNT_PASSWORD: ${{ secrets.AUDIT_TEST_ACCOUNT_PASSWORD }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: npx playwright test --config playwright.audit.config.ts
+
+      - name: Upload Playwright artifacts
+        if: always() && steps.health.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-artifacts-${{ github.run_id }}
+          path: |
+            audit-artifacts/
+            audit-results.json
+          retention-days: 7

@@ -51,13 +51,27 @@ electron/preload.js
 # Documentation and planning files
 *.md
 !README.md
+!CONVERSION_AUDIT_APRIL_2026.md
 
-# Scripts
-/scripts/
+# Scripts (mostly local-only utilities; opt audit infra in)
+/scripts/*
+!/scripts/audit-*.ts
+!/scripts/audit-*.sql
+!/scripts/smoke-test.ts
+
+# Audit run output (Playwright artifacts + JSON)
+/audit-artifacts/
+/audit-results.json
 
 # Temporary files
 /tmp/
 *.log
+
+# MCP local config (may contain secret URLs)
+.mcp.json
+
+# Electron release output
+/release/
 
 # VSCode
 /.vscode/
