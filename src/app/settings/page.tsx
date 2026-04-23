@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { user, subscriptionStatus, signOut } = useAuth();
+  const { user, subscriptionStatus, signOut, refreshSubscriptionStatus } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingPortal, setIsLoadingPortal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -25,11 +25,24 @@ export default function SettingsPage() {
   const [isSavingSms, setIsSavingSms] = useState(false);
   const [smsLoaded, setSmsLoaded] = useState(false);
 
+  // Pull fresh subscription status when the settings page opens.
+  // Without this, the "Premium / Trial / Free" badge can lag behind reality
+  // (e.g. a user just completed checkout on another tab, or finished a session
+  // and came straight here — AuthContext only auto-refreshes on auth events).
+  useEffect(() => {
+    if (user) {
+      refreshSubscriptionStatus();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   // When the window regains focus (user returns from Stripe billing portal),
-  // clear the stuck loading state so the button is usable again.
+  // clear the stuck loading state so the button is usable again AND pull a
+  // fresh subscription status in case the portal changed their plan.
   useEffect(() => {
     const handleFocus = () => {
       if (isLoadingPortal) setIsLoadingPortal(false);
+      if (user) refreshSubscriptionStatus();
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') handleFocus();

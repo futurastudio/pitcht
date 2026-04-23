@@ -15,6 +15,7 @@ import { calculatePresenceScore } from '@/services/videoAnalyzer';
 import { analyzeSpeech, SpeechMetrics } from '@/services/speechAnalyzer';
 import { completeSession } from '@/services/sessionManager';
 import { toast } from 'sonner';
+import * as Sentry from '@sentry/nextjs';
 
 export default function InterviewPage() {
     const router = useRouter();
@@ -368,182 +369,186 @@ export default function InterviewPage() {
             setIsRecording(false);
             setCountdown(null); // Clear countdown if any
             // @ts-expect-error -- window.stopRecording injected by VideoFeed component
-            if (window.stopRecording) {
-                // @ts-expect-error -- window.stopRecording injected by VideoFeed component
-                const { blob, audioBlob, eyeTracking } = await window.stopRecording();
-                const buffer = await blob.arrayBuffer();
+            if (!window.stopRecording) return;
 
-                // Transcribe audio-only blob (much smaller - ~2MB/min vs ~12MB/min for video)
-                const transcriptionPromise = transcribeRecording(audioBlob);
+            // @ts-expect-error -- window.stopRecording injected by VideoFeed component
+            const { blob, audioBlob, eyeTracking } = await window.stopRecording();
 
-                // Save via Electron
-                // @ts-expect-error -- window.electron injected by Electron preload script
-                if (window.electron) {
+            // Bail early if we didn't actually capture anything (catches
+            // fringe cases where MediaRecorder produced zero chunks — the
+            // save path below will reject <100KB anyway).
+            if (!blob || blob.size === 0) {
+                console.warn('Empty video blob — skipping save');
+                if (currentQuestionIndex < questions.length - 1) {
+                    setCurrentQuestionIndex(prev => prev + 1);
+                }
+                return;
+            }
+
+            // Kick off transcription in parallel — audio blob is already
+            // smaller than the video blob (~2MB/min vs ~12MB/min).
+            const transcriptionPromise = transcribeRecording(audioBlob);
+
+            // Optional Electron-only side effect: persist a local copy of
+            // the video file for offline playback. This is additive — the
+            // authoritative copy always goes to Supabase via addRecording.
+            let localVideoPath = '';
+            // @ts-expect-error -- window.electron injected by Electron preload script
+            if (typeof window !== 'undefined' && window.electron?.saveVideo) {
+                try {
+                    const buffer = await blob.arrayBuffer();
                     // @ts-expect-error -- window.electron injected by Electron preload script
                     const result = await window.electron.saveVideo(buffer);
-                    if (result.success) {
-                        const videoPath = result.filePath;
+                    if (result?.success && result.filePath) {
+                        localVideoPath = result.filePath;
+                    }
+                } catch (err) {
+                    console.warn('Electron local save failed (non-fatal):', err);
+                }
+            }
 
-                        // Save recording first WITHOUT transcript (immediate, non-blocking)
-                        // Transcription will continue in background and update later
-                        let savedRecordingId: string | undefined;
+            // Read emotion snapshot from the in-browser FaceTrackerService.
+            // Works identically on web and Electron — no external service.
+            let emotionData: Awaited<ReturnType<typeof analyzeVideoPath>> = null;
+            try {
+                emotionData = await analyzeVideoPath(localVideoPath);
+            } catch (error) {
+                console.error('Emotion read failed:', error);
+            }
 
-                        // Read emotion from FaceTrackerService (accumulated live during recording)
-                        // analyzeVideoPath is now a synchronous read from the tracker singleton
-                        let emotionData = null;
+            // Combine eye-contact + emotion into a single presence score
+            let presenceScore: number | undefined;
+            if (eyeTracking && emotionData) {
+                presenceScore = calculatePresenceScore(
+                    eyeTracking.eyeContactPercentage,
+                    emotionData.dominantEmotion,
+                    emotionData.confidence
+                );
+            }
+
+            // Persist to Supabase via InterviewContext.addRecording — this
+            // uploads the video blob to Storage AND inserts the recordings
+            // row. Transcript + speech metrics are filled in below once
+            // the /api/transcribe call resolves.
+            let savedRecordingId: string | undefined;
+            if (currentQuestion) {
+                const recording = await addRecording({
+                    questionId: currentQuestion.id,
+                    questionText: currentQuestion.text,
+                    videoPath: localVideoPath,
+                    timestamp: Date.now(),
+                    transcript: undefined,
+                    duration: undefined,
+                    videoBlob: blob,
+                    wordsPerMinute: undefined,
+                    fillerWordCount: undefined,
+                    clarityScore: undefined,
+                    pacingScore: undefined,
+                    eyeContactPercentage: eyeTracking?.eyeContactPercentage,
+                    gazeStability: eyeTracking?.gazeStability,
+                    dominantEmotion: emotionData?.dominantEmotion,
+                    emotionConfidence: emotionData?.confidence,
+                    presenceScore,
+                });
+
+                savedRecordingId = recording?.recordingId;
+
+                // Background transcription → DB update → AI feedback pipeline.
+                // Only runs if we have a DB row to update.
+                if (savedRecordingId) {
+                    // Capture in a const so TS narrows inside the async callback
+                    const recordingIdForPipeline: string = savedRecordingId;
+                    transcriptionPromise.then(async ({ transcript, duration }) => {
+                        if (!transcript || !duration) return;
+
+                        const speechMetrics = analyzeSpeech(transcript, duration);
                         try {
-                            emotionData = await analyzeVideoPath(videoPath);
-                        } catch (error) {
-                            console.error('Emotion read failed:', error);
-                            // Continue without emotion data (graceful degradation)
-                        }
+                            const { supabase: sb } = await import('@/services/supabase');
+                            const updateData = {
+                                transcript: transcript || null,
+                                duration: Math.round(duration),
+                                words_per_minute: speechMetrics.wordsPerMinute !== undefined ? Math.max(0, Math.min(400, Math.round(speechMetrics.wordsPerMinute))) : null,
+                                filler_word_count: speechMetrics.fillerWordCount !== undefined ? Math.max(0, Math.round(speechMetrics.fillerWordCount)) : null,
+                                clarity_score: speechMetrics.clarityScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.clarityScore))) : null,
+                                pacing_score: speechMetrics.pacingScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.pacingScore))) : null,
+                            };
 
-                        // Calculate presence score if we have both metrics
-                        let presenceScore = undefined;
-                        if (eyeTracking && emotionData) {
-                            presenceScore = calculatePresenceScore(
-                                eyeTracking.eyeContactPercentage,
-                                emotionData.dominantEmotion,
-                                emotionData.confidence
-                            );
-                        }
+                            const { error } = await sb
+                                .from('recordings')
+                                .update(updateData)
+                                .eq('id', recordingIdForPipeline)
+                                .select();
 
-                        // Add to context with ALL metrics (transcript will be added async)
-                        if (currentQuestion) {
-                            const recording = await addRecording({
-                                questionId: currentQuestion.id,
-                                questionText: currentQuestion.text,
-                                videoPath: videoPath,
-                                timestamp: Date.now(),
-                                transcript: undefined, // Will be added asynchronously
-                                duration: undefined, // Will be added asynchronously
-                                videoBlob: blob, // Sprint 5B: Pass blob for Supabase upload
-                                // Speech metrics will be added asynchronously
-                                wordsPerMinute: undefined,
-                                fillerWordCount: undefined,
-                                clarityScore: undefined,
-                                pacingScore: undefined,
-                                // Sprint 4/5A: Video metrics (REAL data!)
-                                eyeContactPercentage: eyeTracking?.eyeContactPercentage,
-                                gazeStability: eyeTracking?.gazeStability,
-                                dominantEmotion: emotionData?.dominantEmotion,
-                                emotionConfidence: emotionData?.confidence,
-                                presenceScore: presenceScore,
+                            if (error) throw error;
+
+                            setIsTranscribing(false);
+
+                            updateRecording(recordingIdForPipeline, {
+                                transcript,
+                                duration,
+                                ...speechMetrics,
                             });
 
-                            // Get the saved recording ID from context
-                            // The recordingId is populated by InterviewContext after Supabase save
-                            savedRecordingId = recording?.recordingId;
-
-                            // Start background transcription (non-blocking)
-                            if (savedRecordingId) {
-                                transcriptionPromise.then(async ({ transcript, duration }) => {
-                                    if (transcript && duration) {
-                                        // Calculate speech metrics
-                                        const speechMetrics = analyzeSpeech(transcript, duration);
-
-                                        // Update database directly (bypassing API route for reliability)
-                                        try {
-                                            // Import Supabase client dynamically
-                                            const { supabase } = await import('@/services/supabase');
-
-                                            const updateData = {
-                                                transcript: transcript || null,
-                                                duration: Math.round(duration),
-                                                // IMPORTANT: Check for 0 explicitly, don't use falsy check
-                                                words_per_minute: speechMetrics.wordsPerMinute !== undefined ? Math.max(0, Math.min(400, Math.round(speechMetrics.wordsPerMinute))) : null,
-                                                filler_word_count: speechMetrics.fillerWordCount !== undefined ? Math.max(0, Math.round(speechMetrics.fillerWordCount)) : null,
-                                                clarity_score: speechMetrics.clarityScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.clarityScore))) : null,
-                                                pacing_score: speechMetrics.pacingScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.pacingScore))) : null,
-                                            };
-
-                                            const { data, error } = await supabase
-                                                .from('recordings')
-                                                .update(updateData)
-                                                .eq('id', savedRecordingId)
-                                                .select();
-
-                                            if (error) {
-                                                console.error('Database update failed:', error);
-                                                throw error;
-                                            }
-
-                                            // Transcription complete - hide spinner
-                                            setIsTranscribing(false);
-
-                                            // Update frontend state with transcript and speech metrics
-                                            if (savedRecordingId) {
-                                                updateRecording(savedRecordingId, {
-                                                    transcript,
-                                                    duration,
-                                                    ...speechMetrics
-                                                });
-
-                                                // Generate AI feedback (non-blocking)
-                                                generateAIFeedback(
-                                                    savedRecordingId,
-                                                    currentQuestion.text,
-                                                    transcript,
-                                                    duration,
-                                                    speechMetrics,
-                                                    {
-                                                        eyeContactPercentage: eyeTracking?.eyeContactPercentage,
-                                                        gazeStability: eyeTracking?.gazeStability,
-                                                        dominantEmotion: emotionData?.dominantEmotion,
-                                                        emotionConfidence: emotionData?.confidence,
-                                                        presenceScore: presenceScore,
-                                                    }
-                                                );
-                                            }
-                                        } catch (error) {
-                                            console.error('❌ Error updating recording:', error);
-                                            setIsTranscribing(false);
-                                            toast.error('Failed to save transcript', {
-                                                description: 'Your recording was saved but the transcript could not be stored. Try again from the analysis page.',
-                                                duration: 7000,
-                                            });
-                                            // Do NOT update context — DB and UI would be out of sync
-                                        }
-                                    }
-                                }).catch(error => {
-                                    console.error('Background transcription failed:', error);
-                                    // Transcription failed - hide spinner
-                                    setIsTranscribing(false);
-
-                                    // Notify user of background processing failure
-                                    toast.error('Processing Failed', {
-                                        description: 'Your answer could not be processed. Data has been saved for retry.',
-                                        duration: 7000,
-                                    });
-                                });
-                            }
-                        }
-
-                        // Auto-advance or Finish
-                        if (currentQuestionIndex < questions.length - 1) {
-                            setCurrentQuestionIndex(prev => prev + 1);
-                        } else {
-                            // Mark session as completed before navigating
-                            if (sessionId) {
-                                try {
-                                    await completeSession(sessionId);
-                                } catch (error) {
-                                    console.error('Failed to complete session:', error);
-                                    // Don't block navigation on error
+                            generateAIFeedback(
+                                recordingIdForPipeline,
+                                currentQuestion.text,
+                                transcript,
+                                duration,
+                                speechMetrics,
+                                {
+                                    eyeContactPercentage: eyeTracking?.eyeContactPercentage,
+                                    gazeStability: eyeTracking?.gazeStability,
+                                    dominantEmotion: emotionData?.dominantEmotion,
+                                    emotionConfidence: emotionData?.confidence,
+                                    presenceScore,
                                 }
-                            }
-                            router.push('/analysis');
+                            );
+                        } catch (error) {
+                            console.error('Error updating recording:', error);
+                            Sentry.captureException(error, {
+                                tags: { area: 'interview', subsystem: 'transcript-db-update' },
+                                extra: { recordingId: recordingIdForPipeline, sessionId },
+                            });
+                            setIsTranscribing(false);
+                            toast.error('Failed to save transcript', {
+                                description: 'Your recording was saved but the transcript could not be stored. Try again from the analysis page.',
+                                duration: 7000,
+                            });
                         }
-                    }
-                } else {
-                    console.warn('Electron API not found');
-                    // Fallback for browser dev
-                    if (currentQuestionIndex < questions.length - 1) {
-                        setCurrentQuestionIndex(prev => prev + 1);
-                    } else {
-                        router.push('/analysis');
+                    }).catch((error) => {
+                        console.error('Background transcription failed:', error);
+                        Sentry.captureException(error, {
+                            tags: { area: 'interview', subsystem: 'transcription' },
+                            extra: { recordingId: savedRecordingId, sessionId },
+                        });
+                        setIsTranscribing(false);
+                        toast.error('Processing Failed', {
+                            description: 'Your answer could not be processed. Data has been saved for retry.',
+                            duration: 7000,
+                        });
+                    });
+                }
+            }
+
+            // Auto-advance or finish the session
+            if (currentQuestionIndex < questions.length - 1) {
+                setCurrentQuestionIndex(prev => prev + 1);
+            } else {
+                if (sessionId) {
+                    try {
+                        await completeSession(sessionId);
+                    } catch (error) {
+                        console.error('Failed to complete session:', error);
+                        Sentry.captureException(error, {
+                            tags: { area: 'interview', subsystem: 'complete-session' },
+                            extra: { sessionId },
+                        });
                     }
                 }
+                // Pass sessionId so /analysis can hydrate from the DB
+                // instead of relying on volatile React context.
+                const target = sessionId ? `/analysis?sessionId=${sessionId}` : '/analysis';
+                router.push(target);
             }
         } else {
             // Start Countdown (3, 2, 1)
@@ -607,10 +612,15 @@ export default function InterviewPage() {
                     await completeSession(sessionId);
                 } catch (error) {
                     console.error('Failed to complete session:', error);
+                    Sentry.captureException(error, {
+                        tags: { area: 'interview', subsystem: 'complete-session', path: 'skip-to-end' },
+                        extra: { sessionId },
+                    });
                     // Don't block navigation on error
                 }
             }
-            router.push('/analysis');
+            const target = sessionId ? `/analysis?sessionId=${sessionId}` : '/analysis';
+            router.push(target);
         }
     };
 

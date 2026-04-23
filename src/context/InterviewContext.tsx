@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { toast } from 'sonner';
+import * as Sentry from '@sentry/nextjs';
 import { useAuth } from '@/context/AuthContext';
 import { createSession, saveRecording as saveRecordingToSupabase } from '@/services/sessionManager';
 import type { User } from '@supabase/supabase-js';
@@ -150,12 +151,45 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
                 return { recordingId: result.id };
             } catch (error) {
                 console.error('Failed to upload recording:', error);
+                // Report to Sentry — this is the exact failure that caused every web user's
+                // recordings to vanish silently (Fabiana April 2026). Capture rich context so
+                // the next recurrence is detected immediately.
+                Sentry.captureException(error, {
+                    tags: {
+                        area: 'interview',
+                        subsystem: 'save-recording',
+                        platform: typeof window !== 'undefined' && 'electron' in window ? 'electron' : 'web',
+                    },
+                    extra: {
+                        userId: user.id,
+                        sessionId,
+                        questionId: recording.questionId,
+                        blobSize: recording.videoBlob?.size ?? 0,
+                        hasTranscript: Boolean(recording.transcript),
+                        duration: recording.duration,
+                    },
+                });
                 toast.error('Recording upload failed', {
                     description: 'Your recording could not be saved. Check your connection — you may need to redo this answer.',
                 });
                 return {};
             }
         } else {
+            // Tracking gap: we had a user/session but no blob, or not signed in.
+            // This branch is usually legitimate (skipped question) but we log a breadcrumb
+            // so production traces surface any unexpected drops.
+            Sentry.addBreadcrumb({
+                category: 'interview',
+                level: 'info',
+                message: 'addRecording: no DB upload attempted',
+                data: {
+                    hasUser: Boolean(user),
+                    hasSessionId: Boolean(sessionId),
+                    hasBlob: Boolean(recording.videoBlob),
+                    blobSize: recording.videoBlob?.size ?? 0,
+                    questionId: recording.questionId,
+                },
+            });
             return {};
         }
     };
@@ -185,23 +219,37 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         // Use override if provided (history page), otherwise use current context values (analysis page)
         const currentType = overrideConfig?.type ?? sessionType;
         const currentContext = overrideConfig?.context ?? sessionContext;
-        const currentQuestions = overrideConfig?.questions ?? [...questions];
+        const sourceQuestions = overrideConfig?.questions ?? questions;
 
-        // CRITICAL: Reset the creation guard ref before clearSession.
-        // isCreatingSessionRef is set true on first session creation and never
-        // reset on success. Without this, initSession skips creating the new DB
-        // session → recordings save nowhere.
+        // CRITICAL: regenerate fresh UUIDs for each question. Without this,
+        // createSession() re-inserts rows with the previous session's question
+        // ids and hits a "duplicate key value violates unique constraint
+        // questions_pkey" (23505) — which throws, leaves sessionId=null, and
+        // silently drops every recording the user makes on the repeat run.
+        // This is the second half of Fabiana's "no recordings" bug; the ref
+        // reset below was only half the fix.
+        const freshQuestions: Question[] = sourceQuestions.map((q) => ({
+            ...q,
+            id:
+                typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                    ? crypto.randomUUID()
+                    : `q-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+        }));
+
+        // Reset the creation guard ref before clearSession. isCreatingSessionRef
+        // is set true on first session creation and never reset on success.
+        // Without this, initSession skips creating the new DB session.
         isCreatingSessionRef.current = false;
 
         // Clear all state and localStorage (same as a fresh session)
         clearSession();
 
-        // Immediately repopulate with the same config.
+        // Immediately repopulate with the same config (but fresh question ids).
         // sessionId is now null → initSession useEffect will fire and create
         // a fresh DB session (the ref reset above ensures it runs).
         if (currentType) setSessionType(currentType);
         setSessionContext(currentContext);
-        setQuestions(currentQuestions);
+        setQuestions(freshQuestions);
     };
 
     return (

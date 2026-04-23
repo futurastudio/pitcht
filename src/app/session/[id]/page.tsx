@@ -7,7 +7,9 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useInterview } from '@/context/InterviewContext';
 import { getSessionDetails, getVideoUrl } from '@/services/sessionManager';
+import { canUserStartSession } from '@/services/subscriptionManager';
 import TranscriptViewer from '@/components/TranscriptViewer';
+import PaywallModal from '@/components/PaywallModal';
 
 interface Recording {
   id: string;
@@ -61,7 +63,7 @@ interface SessionDetails {
 export default function SessionDetailsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading, subscriptionStatus } = useAuth();
   const { repeatSession } = useInterview();
   const [session, setSession] = useState<SessionDetails | null>(null);
   const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
@@ -69,6 +71,12 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
   const [isLoading, setIsLoading] = useState(true);
   const [openExamples, setOpenExamples] = useState<Record<number, boolean>>({});
   const [isVideoExpanded, setIsVideoExpanded] = useState(false);
+  // Paywall state — gates "Practice Again" for free-tier users who've used their
+  // lifetime session. Pro / trialing users never see this. See handler below.
+  const [showPaywall, setShowPaywall] = useState(false);
+  const [paywallReason, setPaywallReason] = useState<string | undefined>(undefined);
+  const [sessionsUsedForPaywall, setSessionsUsedForPaywall] = useState(1);
+  const [isCheckingEntitlement, setIsCheckingEntitlement] = useState(false);
 
   // Redirect to home if not logged in
   useEffect(() => {
@@ -675,40 +683,86 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
               </div>
             )}
 
-            {/* #32 Practice Again */}
+            {/* #32 Practice Again
+                PAYWALL GATE: same policy as /analysis — free-tier users who've used
+                their 1 lifetime session get the upgrade modal instead of a bypass.
+                Pro / trialing users skip the DB check and navigate immediately. */}
             {session && session.questions.length > 0 && selectedRecording && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-2">
-                <Link
-                  href="/interview"
-                  onClick={() => {
-                    // Map history page question shape → InterviewContext Question type
+                <button
+                  type="button"
+                  disabled={isCheckingEntitlement}
+                  onClick={async () => {
+                    if (isCheckingEntitlement) return;
+
+                    // Map history page question shape → InterviewContext Question type.
+                    // NOTE: repeatSession() itself regenerates fresh UUIDs to dodge the
+                    // questions_pkey collision — these ids are just a starting shape.
                     const mappedQuestions = session.questions.map(q => ({
                       id: q.id,
                       text: q.question_text,
                       type: 'behavioral' as const,
                       difficulty: 3,
                     }));
-                    // Pass config directly — history page has no questions in context,
-                    // so repeatSession must receive them as overrideConfig
-                    repeatSession({
-                      type: session.session_type,
-                      context: session.context,
-                      questions: mappedQuestions,
-                    });
+
+                    const proceed = () => {
+                      repeatSession({
+                        type: session.session_type,
+                        context: session.context,
+                        questions: mappedQuestions,
+                      });
+                      router.push('/interview');
+                    };
+
+                    // Pro / trialing: no gate.
+                    if (subscriptionStatus.isPremium || subscriptionStatus.isTrialing) {
+                      proceed();
+                      return;
+                    }
+
+                    // Unauthenticated (shouldn't happen — history is auth-gated — but be safe).
+                    if (!user) {
+                      proceed();
+                      return;
+                    }
+
+                    setIsCheckingEntitlement(true);
+                    try {
+                      const check = await canUserStartSession(user.id);
+                      if (!check.allowed) {
+                        setPaywallReason(check.reason);
+                        setSessionsUsedForPaywall(check.sessionsThisMonth || 1);
+                        setShowPaywall(true);
+                        return;
+                      }
+                      proceed();
+                    } finally {
+                      setIsCheckingEntitlement(false);
+                    }
                   }}
-                  className="w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 hover:border-white/20 transition-all duration-200 rounded-2xl px-6 py-4 group"
+                  className="w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 hover:border-white/20 transition-all duration-200 rounded-2xl px-6 py-4 group disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/40 group-hover:text-white/70 transition-colors flex-shrink-0">
                     <polyline points="23 4 23 10 17 10"></polyline>
                     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                   </svg>
                   <div className="text-left">
-                    <div className="text-sm font-medium text-white/70 group-hover:text-white/90 transition-colors">Practice Again</div>
+                    <div className="text-sm font-medium text-white/70 group-hover:text-white/90 transition-colors">
+                      {isCheckingEntitlement ? 'Checking…' : 'Practice Again'}
+                    </div>
                     <div className="text-[11px] text-white/35 capitalize">{session.session_type.replace(/-/g, ' ')} · Same questions</div>
                   </div>
-                </Link>
+                </button>
               </div>
             )}
+
+            {/* Paywall — shown when a free-tier user tries Practice Again after using their free session. */}
+            <PaywallModal
+              isOpen={showPaywall}
+              onClose={() => setShowPaywall(false)}
+              reason={paywallReason}
+              sessionsUsed={sessionsUsedForPaywall}
+            />
 
           </div>
         </div>

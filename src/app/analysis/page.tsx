@@ -1,41 +1,179 @@
 'use client';
 
 import { apiFetch } from '@/utils/api';
-import React, { useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useInterview, Recording } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
-import AccountConversionModal from '@/components/AccountConversionModal';
 import TranscriptViewer from '@/components/TranscriptViewer';
-import { saveAnalysis } from '@/services/sessionManager';
+import PaywallModal from '@/components/PaywallModal';
+import { saveAnalysis, getSessionDetails } from '@/services/sessionManager';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
+import { canUserStartSession } from '@/services/subscriptionManager';
 import type { GenerateFeedbackResponse } from '@/app/api/generate-feedback/route';
 
-// Sprint 5A: Demo data removed - using real recordings from InterviewContext
+// Map a DB recording row (snake_case) onto the client Recording shape.
+// Used when hydrating /analysis directly from ?sessionId= (post-interview, refresh, deep link).
+type DbRecordingRow = {
+    id: string;
+    question_id?: string | null;
+    video_path?: string | null;
+    video_url?: string | null;
+    created_at?: string | null;
+    transcript?: string | null;
+    duration?: number | null;
+    words_per_minute?: number | null;
+    filler_word_count?: number | null;
+    clarity_score?: number | null;
+    pacing_score?: number | null;
+    eye_contact_percentage?: number | null;
+    gaze_stability?: number | null;
+    dominant_emotion?: string | null;
+    emotion_confidence?: number | null;
+    presence_score?: number | null;
+};
 
-export default function Analysis() {
-    const { recordings, updateRecording, clearSession, repeatSession, sessionType, sessionContext, questions } = useInterview();
-    const { user, subscriptionStatus } = useAuth();
+type DbQuestionRow = {
+    id: string;
+    text?: string | null;
+    order_index?: number | null;
+};
+
+function dbRowToRecording(row: DbRecordingRow, question?: DbQuestionRow): Recording {
+    return {
+        questionId: row.question_id || question?.id || '',
+        questionText: question?.text || '',
+        videoPath: row.video_path || '',
+        videoUrl: row.video_url || undefined,
+        recordingId: row.id,
+        timestamp: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+        transcript: row.transcript || undefined,
+        duration: row.duration ?? undefined,
+        wordsPerMinute: row.words_per_minute ?? undefined,
+        fillerWordCount: row.filler_word_count ?? undefined,
+        clarityScore: row.clarity_score ?? undefined,
+        pacingScore: row.pacing_score ?? undefined,
+        eyeContactPercentage: row.eye_contact_percentage ?? undefined,
+        gazeStability: row.gaze_stability ?? undefined,
+        dominantEmotion: row.dominant_emotion || undefined,
+        emotionConfidence: row.emotion_confidence ?? undefined,
+        presenceScore: row.presence_score ?? undefined,
+    };
+}
+
+function AnalysisContent() {
+    const searchParams = useSearchParams();
+    const router = useRouter();
+    const sessionIdParam = searchParams.get('sessionId');
+
+    const { recordings: contextRecordings, updateRecording, clearSession, repeatSession, sessionType, sessionContext, questions } = useInterview();
+    const { user, loading: authLoading, refreshSubscriptionStatus, subscriptionStatus } = useAuth();
+
+    // Pull a fresh subscription/usage snapshot once the analysis page opens.
+    // This ensures sessionsThisMonth and trial/premium flags reflect the
+    // session we just completed, so any upstream CTAs (paywall, "upgrade"
+    // chips) read correct values on the next navigation. Without this,
+    // subscriptionStatus only auto-refreshes on auth events — a user who
+    // completes a session then navigates via SPA back to home can see the
+    // stale count for a few seconds.
+    useEffect(() => {
+        if (user) {
+            refreshSubscriptionStatus();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user]);
+
+    // DB hydration (post-interview navigation, refresh, deep link with ?sessionId=)
+    const [hydratedRecordings, setHydratedRecordings] = useState<Recording[] | null>(null);
+    const [isHydrating, setIsHydrating] = useState<boolean>(Boolean(sessionIdParam));
+    const [hydrateError, setHydrateError] = useState<string | null>(null);
+
     const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
     const [videoSrc, setVideoSrc] = useState<string | null>(null);
     const [feedback, setFeedback] = useState<GenerateFeedbackResponse | null>(null);
     const [isGeneratingFeedback, setIsGeneratingFeedback] = useState(false);
     const [feedbackError, setFeedbackError] = useState<string | null>(null);
-    const [showSignupOverlay, setShowSignupOverlay] = useState(false);
-    const [openExamples, setOpenExamples] = useState<Record<number, boolean>>({}); // NEW: Track which examples are open
+    const [openExamples, setOpenExamples] = useState<Record<number, boolean>>({});
     const [isRetryingTranscription, setIsRetryingTranscription] = useState(false);
     const [retryError, setRetryError] = useState<string | null>(null);
     const [isVideoExpanded, setIsVideoExpanded] = useState(false);
+    // Paywall state — gates "Practice Again" for free-tier users who've used their lifetime session.
+    // Premium/trialing users skip this entirely. See runPracticeAgain below.
+    const [showPaywall, setShowPaywall] = useState(false);
+    const [paywallReason, setPaywallReason] = useState<string | undefined>(undefined);
+    const [sessionsUsedForPaywall, setSessionsUsedForPaywall] = useState(1);
+    const [isCheckingEntitlement, setIsCheckingEntitlement] = useState(false);
 
-    // Sprint 5A: Use real recordings only
+    // Prefer DB-hydrated recordings when we've loaded from ?sessionId, otherwise use context.
+    // This kills the class of bug where the client-side context is stale/cleared but the
+    // session exists in Supabase (e.g. user navigated back, refreshed, or the browser dropped state).
+    const recordings = useMemo<Recording[]>(
+        () => (hydratedRecordings !== null ? hydratedRecordings : contextRecordings),
+        [hydratedRecordings, contextRecordings]
+    );
     const hasRecordings = recordings.length > 0;
 
-    // Phase C: Show signup overlay for anonymous users
+    // Hydrate the full session (questions + recordings + analyses) from Supabase
     useEffect(() => {
-        if (!user && hasRecordings) {
-            setShowSignupOverlay(true);
+        if (!sessionIdParam) {
+            setIsHydrating(false);
+            return;
         }
-    }, [user, hasRecordings]);
+        if (authLoading) return; // wait for auth resolution
+        if (!user) {
+            setIsHydrating(false);
+            return;
+        }
+        let cancelled = false;
+        setIsHydrating(true);
+        setHydrateError(null);
+        (async () => {
+            try {
+                const data = await getSessionDetails(sessionIdParam);
+                if (cancelled) return;
+                // Ownership check — defense in depth. RLS also enforces this server-side.
+                if (data && data.user_id && data.user_id !== user.id) {
+                    setHydrateError('This session does not belong to your account.');
+                    setHydratedRecordings([]);
+                    return;
+                }
+                const questions: DbQuestionRow[] = (data?.questions as DbQuestionRow[]) || [];
+                const questionMap = new Map<string, DbQuestionRow>(questions.map(q => [q.id, q]));
+                const rows: DbRecordingRow[] = ((data?.recordings as DbRecordingRow[]) || []).slice().sort((a, b) => {
+                    const qa = questionMap.get(a.question_id || '');
+                    const qb = questionMap.get(b.question_id || '');
+                    return (qa?.order_index ?? 0) - (qb?.order_index ?? 0);
+                });
+                const mapped: Recording[] = rows.map(r => dbRowToRecording(r, questionMap.get(r.question_id || '')));
+                setHydratedRecordings(mapped);
+            } catch (err) {
+                console.error('Failed to hydrate session from DB:', err);
+                if (!cancelled) {
+                    setHydrateError('Could not load this session.');
+                    setHydratedRecordings([]);
+                }
+            } finally {
+                if (!cancelled) setIsHydrating(false);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [sessionIdParam, user, authLoading]);
+
+    // Empty-state routing. Auth is enforced upstream (SessionSetupModal) so an unauthenticated
+    // user should never legitimately reach /analysis — bounce home. Authenticated users with no
+    // recordings to show are bounced to /history where they can start a new session.
+    useEffect(() => {
+        if (authLoading || isHydrating) return;
+        if (!user) {
+            router.replace('/');
+            return;
+        }
+        const hydrationResolved = hydratedRecordings !== null || !sessionIdParam;
+        if (hydrationResolved && !hasRecordings) {
+            router.replace('/history');
+        }
+    }, [authLoading, isHydrating, user, hydratedRecordings, hasRecordings, sessionIdParam, router]);
 
     useEffect(() => {
         if (recordings.length > 0 && !selectedRecording) {
@@ -378,12 +516,21 @@ export default function Analysis() {
 
             if (dbError) throw new Error('Failed to save transcript to database');
 
-            // Update context state
+            // Update context state (no-op when we're rendering DB-hydrated recordings,
+            // but keeps in-flight interview context consistent)
             updateRecording(recording.recordingId, {
                 transcript,
                 duration,
                 ...speechMetrics,
             });
+
+            // Also update hydrated recordings if we're rendering from DB (?sessionId=)
+            setHydratedRecordings(prev => prev
+                ? prev.map(r => r.recordingId === recording.recordingId
+                    ? { ...r, transcript, duration, ...speechMetrics }
+                    : r)
+                : prev
+            );
 
             // Update selected recording so the UI refreshes
             setSelectedRecording(prev => prev ? { ...prev, transcript, duration, ...speechMetrics } : prev);
@@ -401,8 +548,7 @@ export default function Analysis() {
             {/* Background Gradient Overlay */}
             <div className="absolute inset-0 bg-black/80 backdrop-blur-md -z-10" />
 
-            {/* Analysis Content - Blurred for anonymous users */}
-            <div className={`max-w-7xl mx-auto relative z-10 ${showSignupOverlay ? 'filter blur-md pointer-events-none select-none' : ''}`}>
+            <div className="max-w-7xl mx-auto relative z-10">
                 <header className="flex justify-between items-center mb-8">
                     <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-white/60">
                         Session Review
@@ -461,13 +607,20 @@ export default function Analysis() {
                                         )}
                                     </button>
                                 ))}
-                                {!hasRecordings && (
+                                {!hasRecordings && isHydrating && (
                                     <div className="p-5 text-center bg-white/5 rounded-xl border border-white/10">
-                                        <div className="text-2xl mb-3">🎬</div>
-                                        <p className="text-sm text-white/70 font-medium mb-1">No recordings yet</p>
+                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-3" />
+                                        <p className="text-sm text-white/70 font-medium mb-1">Loading session…</p>
                                         <p className="text-xs text-white/40 leading-relaxed">
-                                            You didn&apos;t record any answers this session. Scroll right to see what your AI analysis would look like.
+                                            Fetching your recordings from the server.
                                         </p>
+                                    </div>
+                                )}
+                                {!hasRecordings && !isHydrating && hydrateError && (
+                                    <div className="p-5 text-center bg-white/5 rounded-xl border border-white/10">
+                                        <div className="text-2xl mb-3">⚠️</div>
+                                        <p className="text-sm text-white/70 font-medium mb-1">Couldn&apos;t load session</p>
+                                        <p className="text-xs text-white/40 leading-relaxed">{hydrateError}</p>
                                     </div>
                                 )}
                             </div>
@@ -477,233 +630,36 @@ export default function Analysis() {
                     {/* Right Area: Analysis View (70%) */}
                     <div className="flex-1 space-y-6">
 
-                        {/* === DEMO STATE: No Recordings — Show Sample Analysis === */}
+                        {/* Empty-state placeholder while hydration resolves.
+                            Authenticated users with no recordings are redirected to /history
+                            by the effect above; this renders briefly during the async load. */}
                         {!hasRecordings && (
-                            <>
-                                {/* Demo Question Header */}
-                                <div className="bg-white/5 border border-white/10 rounded-2xl px-5 py-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1.5">Sample Question</div>
-                                            <p className="text-white/90 font-medium text-sm leading-relaxed">Tell me about yourself and your background.</p>
-                                        </div>
-                                        <div className="px-2.5 py-1 bg-blue-500/20 border border-blue-500/30 rounded-full flex-shrink-0 mt-0.5">
-                                            <span className="text-[9px] text-blue-300 font-bold tracking-widest uppercase">Demo</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Demo Analysis Cards — styled identically to real analysis */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    {/* Demo AI Coach Feedback Card */}
-                                    <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6">
-                                        <div className="absolute top-4 right-4 px-2 py-0.5 bg-blue-500/20 border border-blue-500/30 rounded-full">
-                                            <span className="text-[9px] text-blue-300 font-bold tracking-widest uppercase">Sample</span>
-                                        </div>
-                                        <h3 className="text-lg font-semibold mb-4 text-white/90 flex items-center gap-2">
-                                            <span>🤖</span> AI Coach Feedback
-                                        </h3>
-                                        {/* Wrap in space-y-4 to match real card layout exactly */}
-                                        <div className="space-y-4">
-                                            {/* Focus callout */}
-                                            <div className="border-l-2 border-yellow-400/60 pl-3 py-0.5">
-                                                <p className="text-xs font-medium text-yellow-300 leading-relaxed">
-                                                    <span className="text-white/50 mr-1">Focus on Comms:</span>
-                                                    Tighten transitions between your ideas.
-                                                </p>
-                                            </div>
-                                            {/* Score breakdown */}
-                                            <div className="grid grid-cols-3 gap-2 mb-4">
-                                                {[
-                                                    { label: 'Content', score: 80, hint: 'Strong' },
-                                                    { label: 'Comms', score: 75, hint: 'Clarify ideas' },
-                                                    { label: 'Delivery', score: 78, hint: 'Confident' },
-                                                ].map(({ label, score, hint }) => (
-                                                    <div key={label} className="bg-white/5 rounded-xl p-3 text-center">
-                                                        <div className="text-[10px] text-white/40 uppercase tracking-wide mb-1">{label}</div>
-                                                        <div className="text-xl font-bold text-green-400">{score}</div>
-                                                        <div className="text-[10px] text-white/30">/100</div>
-                                                        <div className="text-[10px] text-white/40 mt-0.5 leading-tight">{hint}</div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <p className="text-white/80 text-sm leading-relaxed">
-                                                Your answer had a strong opening but could benefit from a more specific example when discussing your experience. Try using the STAR method — Situation, Task, Action, Result — to structure your response. You maintained good eye contact for the first 30 seconds but looked away during the middle of your answer.
-                                            </p>
-                                            <div>
-                                                <h4 className="text-green-300 text-xs font-semibold mb-2">✓ Strengths</h4>
-                                                <ul className="space-y-1">
-                                                    <li className="text-white/70 text-xs">• Strong opening line that clearly states your role and experience level.</li>
-                                                    <li className="text-white/70 text-xs">• Good energy and vocal pacing throughout the answer.</li>
-                                                </ul>
-                                            </div>
-                                            <div>
-                                                <h4 className="text-yellow-300 text-xs font-semibold mb-2">→ Areas to Improve</h4>
-                                                <ul className="space-y-1">
-                                                    <li className="text-white/70 text-xs">• Add a specific metric or project outcome to support your claims.</li>
-                                                    <li className="text-white/70 text-xs">• Maintain consistent eye contact throughout your full response.</li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Demo Performance Metrics Card */}
-                                    <div className="relative bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6 space-y-5">
-                                        <div className="absolute top-4 right-4 px-2 py-0.5 bg-blue-500/20 border border-blue-500/30 rounded-full">
-                                            <span className="text-[9px] text-blue-300 font-bold tracking-widest uppercase">Sample</span>
-                                        </div>
-                                        <h3 className="text-lg font-semibold mb-2 text-white/90 flex items-center gap-2">
-                                            <span>📊</span> Performance Metrics
-                                        </h3>
-                                        {/* Speech Analysis */}
-                                        <div className="space-y-4">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <div className="w-1 h-1 rounded-full bg-blue-400"></div>
-                                                <span className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">Speech Analysis</span>
-                                            </div>
-                                            <div>
-                                                <div className="flex justify-between text-xs mb-1 text-white/60">
-                                                    <span>Clarity</span><span>82%</span>
-                                                </div>
-                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-gradient-to-r from-green-400 to-emerald-300 transition-all duration-1000" style={{ width: '82%' }} />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className="flex justify-between text-xs mb-1 text-white/60">
-                                                    <span>Pacing</span><span>80%</span>
-                                                </div>
-                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-gradient-to-r from-blue-400 to-cyan-300 transition-all duration-1000" style={{ width: '80%' }} />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {/* Video Analysis — matches real card's 3-bar layout */}
-                                        <div className="space-y-4 pt-4 border-t border-white/10">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <div className="w-1 h-1 rounded-full bg-purple-400"></div>
-                                                <span className="text-[10px] text-white/40 uppercase tracking-wider font-semibold">Video Analysis</span>
-                                            </div>
-                                            <div>
-                                                <div className="flex justify-between text-xs mb-1 text-white/60">
-                                                    <span>Eye Contact</span><span>71%</span>
-                                                </div>
-                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-gradient-to-r from-purple-400 to-violet-300 transition-all duration-1000" style={{ width: '71%' }} />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className="flex justify-between text-xs mb-1 text-white/60">
-                                                    <span>Gaze Stability</span><span>75%</span>
-                                                </div>
-                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-gradient-to-r from-pink-400 to-rose-300 transition-all duration-1000" style={{ width: '75%' }} />
-                                                </div>
-                                            </div>
-                                            <div>
-                                                <div className="flex justify-between text-xs mb-1 text-white/60">
-                                                    <span>Overall Presence</span><span>73%</span>
-                                                </div>
-                                                <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-gradient-to-r from-orange-400 to-red-400 transition-all duration-1000" style={{ width: '73%' }} />
-                                                </div>
-                                            </div>
-                                        </div>
-                                        {/* Stats Row */}
-                                        <div className="grid grid-cols-2 gap-4 pt-2">
-                                            <div className="bg-white/5 rounded-xl p-3">
-                                                <div className="text-[10px] text-white/50 uppercase tracking-wider mb-1">Words/Min</div>
-                                                <div className="text-2xl font-bold text-green-400">134</div>
-                                                <div className="text-[10px] text-white/30 mt-0.5">ideal: 120–150</div>
-                                            </div>
-                                            <div className="bg-white/5 rounded-xl p-3">
-                                                <div className="text-[10px] text-white/50 uppercase tracking-wider mb-1">Filler Words</div>
-                                                <div className="text-2xl font-bold text-yellow-300">4</div>
-                                                <div className="text-[10px] text-white/30 mt-0.5">2.0/min</div>
-                                            </div>
-                                        </div>
-                                        {/* Expression */}
-                                        <div className="pt-2 border-t border-white/10">
-                                            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2 flex items-center gap-2">
-                                                <div className="w-1 h-1 rounded-full bg-indigo-400"></div>
-                                                <span className="font-semibold">Expression</span>
-                                            </div>
-                                            <div className="flex flex-col gap-1.5">
-                                                <div className="bg-white/5 border border-white/10 self-start px-3 py-1 rounded-full">
-                                                    <span className="text-xs font-medium text-white/80">Neutral</span>
-                                                </div>
-                                                <p className="text-[11px] text-white/50 leading-relaxed">
-                                                    Try adding vocal energy and micro-smiles on key points.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* CTA Section */}
-                                <div className="bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                    <h2 className="text-2xl font-bold text-white mb-2">Ready to get your real analysis?</h2>
-                                    <p className="text-white/60 text-sm mb-6 max-w-md mx-auto">
-                                        {subscriptionStatus.canStartSession
-                                            ? 'Record your answers in your next session to unlock personalized AI coaching tailored to your responses.'
-                                            : 'Upgrade to Pro to practice unlimited sessions and track your improvement over time.'}
-                                    </p>
-                                    {subscriptionStatus.canStartSession ? (
-                                        <Link
-                                            href="/"
-                                            onClick={() => clearSession()}
-                                            className="inline-flex items-center gap-2 bg-white text-black font-semibold px-8 py-3 rounded-full hover:bg-white/90 active:bg-white/80 transition-all duration-200 text-sm"
-                                        >
-                                            Start Your Free Session
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                            </svg>
+                            <div className="bg-white/5 border border-white/10 rounded-2xl px-6 py-12 text-center">
+                                {isHydrating ? (
+                                    <>
+                                        <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin mx-auto mb-4" />
+                                        <p className="text-white/70 text-sm">Loading your session…</p>
+                                    </>
+                                ) : hydrateError ? (
+                                    <>
+                                        <p className="text-white/80 text-sm font-medium mb-2">{hydrateError}</p>
+                                        <Link href="/history" className="text-xs text-blue-400 hover:text-blue-300 transition-colors">
+                                            View your session history
                                         </Link>
-                                    ) : (
-                                        <Link
-                                            href="/#pricing"
-                                            className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-violet-500 hover:from-blue-400 hover:to-violet-400 text-white font-semibold px-8 py-3 rounded-full transition-all duration-200 shadow-lg hover:shadow-blue-500/30 text-sm"
-                                        >
-                                            Upgrade to Pro for Unlimited Practice
-                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                            </svg>
-                                        </Link>
-                                    )}
-                                </div>
-
-                                {/* Questions From This Session */}
-                                {questions.length > 0 && (
-                                    <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                        <div className="mb-4">
-                                            <h3 className="text-base font-semibold text-white/80 flex items-center gap-2">
-                                                <span>📋</span> Questions From This Session
-                                            </h3>
-                                            <p className="text-xs text-white/40 mt-1">These were generated for your session — use them to prepare for next time.</p>
-                                        </div>
-                                        <div className="space-y-2">
-                                            {questions.map((q, idx) => (
-                                                <div key={q.id} className="flex gap-3 p-4 bg-white/5 border border-white/8 rounded-2xl hover:bg-white/8 transition-colors">
-                                                    <span className="text-[10px] text-white/40 font-semibold uppercase tracking-wider mt-0.5 flex-shrink-0 w-6">Q{idx + 1}</span>
-                                                    <div>
-                                                        <p className="text-sm text-white/80 leading-relaxed">{q.text}</p>
-                                                        <div className="flex items-center gap-2 mt-1.5">
-                                                            <span className="text-[10px] text-white/30 capitalize">{q.type?.replace(/-/g, ' ')}</span>
-                                                            {q.difficulty && (
-                                                                <>
-                                                                    <span className="text-[10px] text-white/20">·</span>
-                                                                    <span className="text-[10px] text-white/30">Difficulty {q.difficulty}/5</span>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+                                    </>
+                                ) : (
+                                    <p className="text-white/60 text-sm">Redirecting…</p>
                                 )}
-                            </>
+                            </div>
                         )}
+
+                        {/* Demo block removed 2026-04-22.
+                            Prior behavior displayed hardcoded sample metrics (WPM 134, filler 4, etc.)
+                            whenever recordings was empty, causing every user to see identical "analysis"
+                            content when the real save path silently failed. Root cause fixed upstream
+                            in interview/page.tsx (save flow no longer gated behind `window.electron`).
+                            Premium CTA (gated on subscriptionStatus.canStartSession, always true for
+                            premium users) was also removed — it was only rendered inside this dead block. */}
 
                         {/* Question Being Reviewed */}
                         {selectedRecording && (
@@ -885,7 +841,6 @@ export default function Analysis() {
                                         const gazeStability = selectedRecording.gazeStability || 0;
                                         const presenceScore = selectedRecording.presenceScore || 0;
                                         const dominantEmotion = selectedRecording.dominantEmotion || null;
-                                        const emotionConfidence = selectedRecording.emotionConfidence || 0;
 
                                         const hasVideoMetrics = eyeContact > 0 || gazeStability > 0 || presenceScore > 0 || dominantEmotion;
 
@@ -1253,39 +1208,100 @@ export default function Analysis() {
                             </div>
                         ) : null}
 
-                        {/* #32 Practice Again */}
+                        {/* #32 Practice Again
+                            PAYWALL GATE: free-tier users who've used their 1 lifetime session
+                            must hit the paywall. Before this fix the button was a plain <Link>
+                            with no subscription check — a free user could click "Practice Again"
+                            from the analysis page and silently get a second session for free,
+                            bypassing the gate that SessionSetupModal already applies on the
+                            home-page "Start" flow. Pro / trialing users skip the check and
+                            proceed immediately. */}
                         {sessionType && questions.length > 0 && selectedRecording && (
                             <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-2">
-                                <Link
-                                    href="/interview"
-                                    onClick={() => repeatSession()}
-                                    className="w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 hover:border-white/20 transition-all duration-200 rounded-2xl px-6 py-4 group"
+                                <button
+                                    type="button"
+                                    disabled={isCheckingEntitlement}
+                                    onClick={async () => {
+                                        if (isCheckingEntitlement) return;
+
+                                        // Premium / trialing users: no gate, no DB round-trip.
+                                        if (subscriptionStatus.isPremium || subscriptionStatus.isTrialing) {
+                                            repeatSession();
+                                            router.push('/interview');
+                                            return;
+                                        }
+
+                                        // Free tier: must have a user to check entitlement. If
+                                        // somehow unauthenticated, fall through and let the
+                                        // interview page itself surface the auth gate.
+                                        if (!user) {
+                                            repeatSession();
+                                            router.push('/interview');
+                                            return;
+                                        }
+
+                                        setIsCheckingEntitlement(true);
+                                        try {
+                                            const check = await canUserStartSession(user.id);
+                                            if (!check.allowed) {
+                                                setPaywallReason(check.reason);
+                                                setSessionsUsedForPaywall(check.sessionsThisMonth || 1);
+                                                setShowPaywall(true);
+                                                return;
+                                            }
+                                            repeatSession();
+                                            router.push('/interview');
+                                        } finally {
+                                            setIsCheckingEntitlement(false);
+                                        }
+                                    }}
+                                    className="w-full flex items-center justify-center gap-3 bg-white/5 hover:bg-white/10 active:bg-white/15 border border-white/10 hover:border-white/20 transition-all duration-200 rounded-2xl px-6 py-4 group disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white/40 group-hover:text-white/70 transition-colors flex-shrink-0">
                                         <polyline points="23 4 23 10 17 10"></polyline>
                                         <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                                     </svg>
                                     <div className="text-left">
-                                        <div className="text-sm font-medium text-white/70 group-hover:text-white/90 transition-colors">Practice Again</div>
+                                        <div className="text-sm font-medium text-white/70 group-hover:text-white/90 transition-colors">
+                                            {isCheckingEntitlement ? 'Checking…' : 'Practice Again'}
+                                        </div>
                                         <div className="text-[11px] text-white/35 capitalize">{sessionType.replace(/-/g, ' ')} · Same questions</div>
                                     </div>
-                                </Link>
+                                </button>
                             </div>
                         )}
+
+                        {/* Paywall rendered at the end of the right column so the modal
+                            isn't layout-positioned with the button. */}
+                        <PaywallModal
+                            isOpen={showPaywall}
+                            onClose={() => setShowPaywall(false)}
+                            reason={paywallReason}
+                            sessionsUsed={sessionsUsedForPaywall}
+                        />
 
                     </div>
                 </div>
             </div>
 
-            {/* Signup Overlay for Anonymous Users */}
-            {showSignupOverlay && (
-                <div className="fixed inset-0 flex items-center justify-center bg-black/40 backdrop-blur-sm z-50">
-                    <AccountConversionModal
-                        isOpen={showSignupOverlay}
-                        onClose={() => setShowSignupOverlay(false)}
-                    />
-                </div>
-            )}
         </main>
+    );
+}
+
+export default function Analysis() {
+    return (
+        <Suspense fallback={
+            <main className="min-h-screen text-white p-8 pb-24 relative">
+                <div className="absolute inset-0 bg-black/80 backdrop-blur-md -z-10" />
+                <div className="max-w-7xl mx-auto relative z-10 flex items-center justify-center min-h-[60vh]">
+                    <div className="flex items-center gap-3 text-white/70">
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span className="text-sm">Loading session…</span>
+                    </div>
+                </div>
+            </main>
+        }>
+            <AnalysisContent />
+        </Suspense>
     );
 }
