@@ -6,9 +6,8 @@ on:
     types: [vercel.deployment.succeeded, audit.manual]
   # Scheduled runs in production
   schedule:
-    # Full audit — 3x/day: 8am ET, 1pm ET, 8pm ET (covers work hours + late-night bugs)
+    # Full audit — 2x/day: 8am ET (start of day) + 8pm ET (late-night bugs)
     - cron: '0 12 * * *'     # 12:00 UTC = 8am ET
-    - cron: '0 17 * * *'     # 17:00 UTC = 1pm ET
     - cron: '0 0 * * *'      # 00:00 UTC = 8pm ET
     # Daily email digest — 10am ET, one consolidated email if anything failed
     - cron: '0 14 * * *'     # 14:00 UTC = 10am ET
@@ -88,7 +87,16 @@ jobs:
           echo "run_index=$idx" >> "$GITHUB_OUTPUT"
 
       - name: Playwright E2E audit
+        id: e2e
         if: steps.health.outcome == 'success'
+        # WARN-ONLY GATE (2026-04-22): the audit agent was just hardened with
+        # DB-level assertions (see scripts/audit-db-assertions.ts). We're
+        # letting it run for ~1 week against real deploys to build a baseline
+        # of signal-to-noise before making it blocking. TODO(ops): flip
+        # continue-on-error to false once we've seen 7+ consecutive green
+        # runs across the pool. Failures still surface via the digest email,
+        # the audit_runs table, and the GH step summary below.
+        continue-on-error: true
         env:
           AUDIT_BASE_URL: https://app.pitcht.us
           AUDIT_RUN_INDEX: ${{ steps.pool.outputs.run_index }}
@@ -101,12 +109,32 @@ jobs:
           GITHUB_SHA: ${{ github.sha }}
         run: npx playwright test --config playwright.audit.config.ts
 
+      # Emit a GitHub annotation + step summary so warn-only failures stay
+      # loudly visible on the Actions UI even while we don't block on them.
+      - name: Surface audit verdict
+        if: steps.health.outcome == 'success' && always()
+        run: |
+          if [ "${{ steps.e2e.outcome }}" = "success" ]; then
+            echo "::notice::Audit E2E passed"
+            echo "### ✅ Audit E2E: PASS" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::Audit E2E failed (warn-only gate — see audit_runs table + digest email)"
+            echo "### ⚠️ Audit E2E: FAIL (warn-only)" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "The audit agent reported a failure. This is currently non-blocking while we build a baseline." >> "$GITHUB_STEP_SUMMARY"
+            echo "Investigate via the audit_runs table or the daily digest email." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Only upload on failure. On green runs we write nothing — keeps us well
+      # under GitHub Free's 500 MB artifact quota. continue-on-error ensures a
+      # storage-quota hiccup here never turns a passing audit red.
       - name: Upload Playwright artifacts
-        if: always() && steps.health.outcome == 'success'
+        if: failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: audit-artifacts-${{ github.run_id }}
           path: |
             audit-artifacts/
             audit-results.json
-          retention-days: 7
+          retention-days: 2

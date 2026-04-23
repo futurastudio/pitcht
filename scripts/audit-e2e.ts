@@ -33,6 +33,7 @@ import { evaluateQuestions } from './audit-evaluator';
 // evaluateFeedback + evaluateAnalysis intentionally not imported until the
 // post-recording journey is reliable enough to surface their inputs.
 import { persistRun, printSummary, type AuditRun, type Stage } from './audit-reporter';
+import { getUserIdByEmail, getPersistedState } from './audit-db-assertions';
 
 const RUN_INDEX = Number(process.env.AUDIT_RUN_INDEX ?? 0);
 const TRIGGER = (process.env.AUDIT_TRIGGER ?? 'manual') as AuditRun['trigger'];
@@ -44,6 +45,10 @@ const ARTIFACT_URL =
 
 const account = pickAccount(RUN_INDEX);
 const fixture = pickFixture(RUN_INDEX);
+
+// Timestamp captured before resetAccount() so DB assertions can scope to rows
+// created during this run only. Refreshed right before journey kickoff.
+let runStartIso = new Date().toISOString();
 
 // Results accumulator — persisted at the end regardless of pass/fail.
 const runState: AuditRun = {
@@ -131,6 +136,9 @@ test.describe('audit: cold → paid journey', () => {
     // Clean state: wipe the pooled account's sessions/recordings/subs
     // so it starts each run as "free, never used".
     await resetAccount(account.email);
+    // Reset AFTER wipe so any rows produced by the journey are strictly newer.
+    // Add a 1s cushion to absorb clock skew between CI and Supabase.
+    runStartIso = new Date(Date.now() - 1_000).toISOString();
   });
 
   test('A–I: home → session setup → questions → login → interview → record → analysis', async ({
@@ -248,26 +256,15 @@ test.describe('audit: cold → paid journey', () => {
       // so the recording is actually persisted before we navigate away.
       await page.waitForTimeout(4_000);
 
-      // ----- I. Bypass the leave-guard and check /history ------------------
-      // The full session-completion path (cycle through 7 questions, click
-      // Finish, land on /analysis with feedback) is brittle to debug from
-      // CI. We defer the analysis_completeness + feedback_specificity
-      // checkpoints — they're marked SKIPPED below and a follow-up should
-      // make the journey deterministic enough to re-enable them.
-      runState.checkpoints.analysis_completeness = {
-        verdict: 'PASS',
-        reason: 'SKIPPED: not yet wired — see scripts/audit-e2e.ts H/I notes',
-      };
-      runState.checkpoints.feedback_specificity = {
-        verdict: 'PASS',
-        reason: 'SKIPPED: not yet wired — see scripts/audit-e2e.ts H/I notes',
-      };
+      // ----- I. DB-level persistence assertions ---------------------------
+      // Why DB instead of string-matching /history: the previous audit
+      // passed for Fabiana's account because /history rendered a session
+      // shell even though no recording row ever reached the database.
+      // These assertions are the ones that would have caught that bug.
 
-      // The interview page guards `popstate` with a "Leave without recording?"
-      // modal. We click "Leave Anyway" if it shows, then jump to /history.
+      // Navigate off /interview so any pending upload promises have a chance
+      // to resolve. The leave-guard may appear; we click through if so.
       const leaveAnyway = page.getByRole('button', { name: /leave anyway/i });
-      // Trigger the navigation — the guard either fires (then we click through)
-      // or it doesn't (then we just land on /history).
       await page.goto('/history').catch(() => {});
       if (await leaveAnyway.isVisible().catch(() => false)) {
         await leaveAnyway.click().catch(() => {});
@@ -275,15 +272,79 @@ test.describe('audit: cold → paid journey', () => {
       }
       await page.waitForLoadState('networkidle').catch(() => {});
 
-      const historyText = await page.locator('body').innerText().catch(() => '');
-      const hasSessionCard =
-        /completed/i.test(historyText) ||
-        /in progress/i.test(historyText) ||
-        new RegExp(fixture.sessionType.replace('-', ' '), 'i').test(historyText);
-      runState.checkpoints.history_persistence = {
-        verdict: hasSessionCard ? 'PASS' : 'FAIL',
-        reason: hasSessionCard ? 'session visible in history' : 'no session card rendered in /history',
-      };
+      const userId = await getUserIdByEmail(account.email);
+      if (!userId) {
+        failedStage = 'e2e';
+        failedReason = `could not resolve userId for ${account.email}`;
+        runState.checkpoints.recording_persistence = {
+          verdict: 'FAIL',
+          reason: failedReason,
+        };
+        runState.checkpoints.history_persistence = {
+          verdict: 'FAIL',
+          reason: failedReason,
+        };
+        runState.checkpoints.analysis_completeness = {
+          verdict: 'FAIL',
+          reason: failedReason,
+        };
+        runState.checkpoints.feedback_specificity = {
+          verdict: 'FAIL',
+          reason: failedReason,
+        };
+      } else {
+        const persisted = await getPersistedState(userId, runStartIso);
+
+        // Primary assertion — the exact check that would have caught
+        // Fabiana's bug. We require at least one recordings row with a
+        // non-null video_url created during this run.
+        const recordingPersisted =
+          persisted.recordings >= 1 && persisted.recordingsWithVideoUrl >= 1;
+        runState.checkpoints.recording_persistence = {
+          verdict: recordingPersisted ? 'PASS' : 'FAIL',
+          reason: recordingPersisted
+            ? `${persisted.recordings} recording(s) persisted, ${persisted.recordingsWithVideoUrl} with video_url`
+            : `no recordings with video_url created (recordings=${persisted.recordings}, withVideoUrl=${persisted.recordingsWithVideoUrl})`,
+        };
+
+        // History persistence now means a sessions row actually exists,
+        // regardless of UI rendering.
+        const hasSession = persisted.sessions >= 1;
+        runState.checkpoints.history_persistence = {
+          verdict: hasSession ? 'PASS' : 'FAIL',
+          reason: hasSession
+            ? `${persisted.sessions} session row(s) created (completed=${persisted.completedSessions})`
+            : 'no sessions row created in DB for this user during this run',
+        };
+
+        // Analysis completeness: both session + recording rows exist and
+        // the recording has the bare minimum speech metrics populated
+        // (transcript, duration, WPM). If the Whisper → DB write pipeline
+        // breaks, this is what will fail.
+        const s = persisted.sampleRecording;
+        const analysisReady = Boolean(
+          s && s.transcript && typeof s.duration === 'number' && s.words_per_minute !== null
+        );
+        runState.checkpoints.analysis_completeness = {
+          verdict: hasSession && recordingPersisted && analysisReady ? 'PASS' : 'FAIL',
+          reason:
+            hasSession && recordingPersisted && analysisReady
+              ? `sessions=${persisted.sessions}, recordings=${persisted.recordings}, sample has transcript + duration + WPM`
+              : `persistence incomplete: sessions=${persisted.sessions}, recordings=${persisted.recordings}, hasTranscript=${Boolean(s?.transcript)}, hasDuration=${typeof s?.duration === 'number'}, hasWPM=${s?.words_per_minute !== null && s?.words_per_minute !== undefined}`,
+        };
+
+        // Feedback specificity — best-effort: we only check that the
+        // analyses table has at least one row tied to our recording, which
+        // is what /analysis depends on. A full semantic eval is deferred
+        // until the journey deterministically hits /analysis.
+        runState.checkpoints.feedback_specificity = {
+          verdict: persisted.analyses >= 1 ? 'PASS' : 'FAIL',
+          reason:
+            persisted.analyses >= 1
+              ? `${persisted.analyses} analysis row(s) written`
+              : 'no analyses rows written — feedback generation path not exercised or failed silently',
+        };
+      }
 
       // attach artifacts
       await testInfo.attach('checkpoints.json', {
