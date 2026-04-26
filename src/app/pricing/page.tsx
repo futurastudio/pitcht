@@ -13,6 +13,14 @@ export default function PricingPage() {
   const router = useRouter();
   const { user, subscriptionStatus, refreshSubscriptionStatus } = useAuth();
   const [isLoading, setIsLoading] = useState<string | null>(null);
+  // Default to annual — anchoring users on the better-value price reduces
+  // decision friction and lifts annual conversion. Users can toggle to monthly.
+  const [billing, setBilling] = useState<'monthly' | 'annual'>('annual');
+
+  const monthlyPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY!;
+  const annualPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL!;
+  const selectedPriceId = billing === 'annual' ? annualPriceId : monthlyPriceId;
+  const isCheckoutInFlight = isLoading !== null;
 
   // Refresh subscription on every mount so the page always reflects the real
   // account state — whether the user just paid, just cancelled, or came back
@@ -187,21 +195,63 @@ export default function PricingPage() {
             ) : null}
           </div>
 
-          {/* Premium Monthly */}
+          {/* Pro — with monthly/annual toggle */}
           <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-3xl p-8 relative shadow-2xl">
             {/* Popular Badge */}
             <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-              <span className="bg-white/20 backdrop-blur-sm border border-white/30 text-white px-4 py-1 rounded-full text-sm font-semibold">
+              <span className="bg-white text-black px-3.5 py-1 rounded-full text-xs font-bold shadow-xl tracking-wide uppercase">
                 Most Popular
               </span>
             </div>
 
             <div className="text-center mb-6">
-              <h3 className="text-2xl font-bold text-white mb-2">Pro</h3>
-              <div className="text-5xl font-bold text-white mb-4">
-                $14.99<span className="text-xl text-white/50">/month</span>
+              <h3 className="text-2xl font-bold text-white mb-4">Pro</h3>
+
+              {/* Billing Toggle */}
+              <div role="tablist" aria-label="Billing period" className="inline-flex items-center bg-black/30 border border-white/10 rounded-full p-1 mb-5">
+                <button
+                  role="tab"
+                  aria-selected={billing === 'monthly'}
+                  type="button"
+                  onClick={() => setBilling('monthly')}
+                  disabled={isCheckoutInFlight}
+                  className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    billing === 'monthly'
+                      ? 'bg-white text-black'
+                      : 'text-white/60 hover:text-white/90'
+                  }`}
+                >
+                  Monthly
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={billing === 'annual'}
+                  type="button"
+                  onClick={() => setBilling('annual')}
+                  disabled={isCheckoutInFlight}
+                  className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    billing === 'annual'
+                      ? 'bg-white text-black'
+                      : 'text-white/60 hover:text-white/90'
+                  }`}
+                >
+                  Annual
+                  <span className="bg-emerald-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+                    Save $30
+                  </span>
+                </button>
               </div>
-              <p className="text-white/60 text-sm">Unlimited practice & insights</p>
+
+              {/* Price — flips with billing toggle */}
+              <div className="text-5xl font-bold text-white mb-1" aria-live="polite">
+                ${billing === 'annual' ? '12.42' : '14.99'}<span className="text-xl text-white/50">/month</span>
+              </div>
+              {/* Fixed min-height so card doesn't jump on toggle */}
+              <p className="text-white/60 text-sm min-h-[20px]">
+                {billing === 'annual'
+                  ? 'Billed annually as $149/year — 2 months free'
+                  : 'Billed monthly. Cancel anytime.'}
+              </p>
             </div>
 
             <div className="space-y-4 mb-8">
@@ -250,14 +300,14 @@ export default function PricingPage() {
               <button
                 onClick={() =>
                   handleSubscribe(
-                    process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY!,
-                    'Pro Monthly'
+                    selectedPriceId,
+                    billing === 'annual' ? 'Pro Annual' : 'Pro Monthly'
                   )
                 }
-                disabled={isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY}
+                disabled={isCheckoutInFlight}
                 className="w-full bg-white text-black hover:bg-white/90 active:bg-white/80 transition-all duration-200 py-3 rounded-full font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY
+                {isLoading === selectedPriceId
                   ? 'Loading...'
                   : !user
                   ? 'Get Pro'
@@ -266,50 +316,6 @@ export default function PricingPage() {
                   : 'Get Pro'}
               </button>
             )}
-          </div>
-        </div>
-
-        {/* Annual Plan */}
-        <div className="max-w-5xl mx-auto mt-8">
-          <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 relative">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h3 className="text-2xl font-bold text-white">Annual Plan</h3>
-                  <span className="bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-sm font-semibold">
-                    2 Months Free
-                  </span>
-                </div>
-                <p className="text-white/60 mb-2">
-                  Get Pro for <span className="text-white font-bold">$149/year</span>
-                </p>
-                <p className="text-white/50 text-sm">
-                  That&apos;s only <span className="text-green-400 font-semibold">$12.42/month</span> — 2 months free!
-                </p>
-              </div>
-              <div className="flex-shrink-0">
-                {subscriptionStatus.isPremium && !subscriptionStatus.isTrialing ? (
-                  <div className="px-8 py-3 bg-white/5 border border-white/10 rounded-full text-white/50">
-                    Current Plan ✓
-                  </div>
-                ) : (
-                  <button
-                    onClick={() =>
-                      handleSubscribe(
-                        process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL!,
-                        'Pro Annual'
-                      )
-                    }
-                    disabled={isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL}
-                    className="px-8 py-3 bg-white text-black hover:bg-white/90 active:bg-white/80 transition-all duration-200 rounded-full font-bold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                  >
-                    {isLoading === process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL
-                      ? 'Loading...'
-                      : 'Subscribe Annually'}
-                  </button>
-                )}
-              </div>
-            </div>
           </div>
         </div>
 
