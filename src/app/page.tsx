@@ -81,17 +81,35 @@ export default function Dashboard() {
       <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10 -z-10" />
 
       <div className="max-w-5xl w-full space-y-12 z-10">
-        <div className="text-center space-y-4">
-          <h1 className="text-5xl md:text-7xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-white/90 to-white/60 tracking-tight drop-shadow-sm">
-            Pitcht
+        <div className="text-center space-y-3 max-w-3xl mx-auto">
+          {/* Value-prop headline — same for everyone, regardless of auth state.
+              The wordmark still appears in the Header, so we don't need to
+              repeat it here as the largest text on the page. */}
+          <h1 className="text-3xl md:text-5xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white via-white/90 to-white/60 tracking-tight drop-shadow-sm leading-[1.15]">
+            Your AI interview coach — practice until you actually feel ready
           </h1>
-          <p className="text-xl text-white/80 max-w-2xl mx-auto font-medium drop-shadow-md">
-            {user && subscriptionStatus.isPremium
-              ? 'You\'re on Pro. Ready to practice?'
+
+          {/* Capability subtitle — what's specifically in the box */}
+          <p className="text-sm md:text-base text-white/70 max-w-xl mx-auto leading-relaxed font-medium drop-shadow-sm">
+            Paste a job description. Get role-specific questions and AI feedback on clarity, eye contact, and pacing.
+          </p>
+
+          {/* Personalization line — trust signal for new/free users,
+              status line for trial/pro, hidden for exhausted free users
+              since the lock badges + "Upgrade to unlock" CTA below
+              already convey state. */}
+          {(() => {
+            const line = user && subscriptionStatus.isPremium
+              ? "You're on Pro. Ready to practice?"
               : user && subscriptionStatus.isTrialing
               ? 'Trial active — make your session count.'
-              : 'Your 24/7 interview coach. Practice until you feel ready.'}
-          </p>
+              : isExhaustedFreeUser
+              ? null
+              : 'Free to try — 1 session, no credit card.';
+            return line ? (
+              <p className="text-sm text-white/50 font-medium pt-1">{line}</p>
+            ) : null;
+          })()}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
