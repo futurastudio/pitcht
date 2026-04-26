@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { BarChart3 } from 'lucide-react';
 
 interface RecordingMetric {
   created_at: string;
@@ -22,7 +23,7 @@ export default function ProgressMetrics({ recordings }: ProgressMetricsProps) {
     return (
       <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 mb-8">
         <div className="text-center">
-          <div className="text-4xl mb-2">📊</div>
+          <BarChart3 className="w-8 h-8 mx-auto mb-2 text-white/50" strokeWidth={1.5} />
           <h3 className="text-white/70 text-sm font-medium">Track Your Progress</h3>
           <p className="text-white/50 text-xs mt-1">
             Complete more sessions to see your improvement over time

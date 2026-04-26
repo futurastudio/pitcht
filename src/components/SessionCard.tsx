@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { Briefcase, TrendingUp, Target, FileText, HelpCircle, Clock, Video, Trash2, type LucideIcon } from 'lucide-react';
 import { deleteSession } from '@/services/sessionManager';
 
 interface SessionCardProps {
@@ -29,16 +30,16 @@ export default function SessionCard({ session, onDelete }: SessionCardProps) {
   const estimatedDuration = recordingCount * 2; // Rough estimate: 2 min per recording
 
   // Format session type
-  const getSessionIcon = (type: string) => {
+  const getSessionIcon = (type: string): LucideIcon => {
     switch (type) {
       case 'job-interview':
-        return '💼';
+        return Briefcase;
       case 'sales-pitch':
-        return '🚀';
+        return TrendingUp;
       case 'presentation':
-        return '🎯';
+        return Target;
       default:
-        return '📝';
+        return FileText;
     }
   };
 
@@ -69,12 +70,16 @@ export default function SessionCard({ session, onDelete }: SessionCardProps) {
     }
   };
 
+  const SessionIcon = getSessionIcon(session.session_type);
+
   return (
     <>
       <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-2xl p-5 hover:bg-white/15 transition-all duration-200 group">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="text-3xl">{getSessionIcon(session.session_type)}</div>
+            <div className="w-11 h-11 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center text-white/85">
+              <SessionIcon className="w-5 h-5" strokeWidth={1.5} />
+            </div>
             <div>
               <h3 className="text-white font-semibold text-base">
                 {getSessionLabel(session.session_type)}
@@ -107,15 +112,15 @@ export default function SessionCard({ session, onDelete }: SessionCardProps) {
         {/* Stats */}
         <div className="flex items-center gap-4 mb-4 text-xs text-white/50">
           <span className="flex items-center gap-1.5">
-            <span>❓</span>
+            <HelpCircle className="w-3.5 h-3.5" strokeWidth={1.75} />
             <span>{questionCount} questions</span>
           </span>
           <span className="flex items-center gap-1.5">
-            <span>⏱️</span>
+            <Clock className="w-3.5 h-3.5" strokeWidth={1.75} />
             <span>{estimatedDuration} min</span>
           </span>
           <span className="flex items-center gap-1.5">
-            <span>🎥</span>
+            <Video className="w-3.5 h-3.5" strokeWidth={1.75} />
             <span>{recordingCount} recorded</span>
           </span>
         </div>
@@ -151,7 +156,7 @@ export default function SessionCard({ session, onDelete }: SessionCardProps) {
           <div className="relative w-full max-w-md bg-white/10 backdrop-blur-xl border border-white/20 shadow-2xl rounded-3xl p-6">
             <div className="text-center mb-6">
               <div className="w-12 h-12 bg-red-500/20 rounded-full mx-auto mb-3 flex items-center justify-center">
-                <span className="text-2xl">🗑️</span>
+                <Trash2 className="w-6 h-6 text-red-300" strokeWidth={1.75} />
               </div>
               <h3 className="text-xl font-bold text-white mb-2">Delete Session?</h3>
               <p className="text-white/60 text-sm">

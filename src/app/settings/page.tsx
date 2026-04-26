@@ -4,6 +4,7 @@ import { apiFetch } from '@/utils/api';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/services/supabase';
 import Header from '@/components/Header';
@@ -575,8 +576,9 @@ export default function SettingsPage() {
                 <li>Your subscription and billing history</li>
                 <li>Your account and profile data</li>
               </ul>
-              <p className="text-red-400 font-semibold">
-                ⚠️ This action cannot be undone!
+              <p className="text-red-400 font-semibold inline-flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4" strokeWidth={1.75} />
+                This action cannot be undone!
               </p>
             </div>
 

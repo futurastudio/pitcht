@@ -31,7 +31,7 @@ function PermissionCard({ browser, onRetry, onSkip, isRetrying }: PermissionCard
     const instructions: Record<Browser, { steps: string[] }> = {
         chrome: {
             steps: [
-                'Click the camera icon (🎥) in your browser\'s address bar',
+                'Click the camera icon in your browser\'s address bar',
                 'Select "Always allow" for both camera and microphone',
                 'Click "Try Again" below — no refresh needed',
             ],

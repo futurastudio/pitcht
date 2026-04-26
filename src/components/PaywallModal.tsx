@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
+import { Sparkles, CreditCard, Lock } from 'lucide-react';
 
 interface PaywallModalProps {
   isOpen: boolean;
@@ -28,13 +29,13 @@ export default function PaywallModal({ isOpen, onClose, reason, sessionsUsed = 1
         <div className="text-center">
           {/* Icon */}
           <div className="w-16 h-16 bg-white/10 border border-white/20 rounded-full mx-auto mb-4 flex items-center justify-center">
-            <span className="text-3xl">🚀</span>
+            <Sparkles className="w-7 h-7 text-white" strokeWidth={1.75} />
           </div>
 
           {/* Heading */}
           <h2 className="text-2xl font-bold text-white mb-2">Upgrade to Pro</h2>
           <p className="text-white/70 mb-6">
-            {reason || `You&apos;ve used your free session. Upgrade to Pro to keep practicing.`}
+            {reason || "You've used your free session. Upgrade to Pro to keep practicing."}
           </p>
 
           {/* Pricing Card */}
@@ -83,9 +84,19 @@ export default function PaywallModal({ isOpen, onClose, reason, sessionsUsed = 1
           </button>
 
           {/* Money-back guarantee */}
-          <p className="mt-6 text-white/50 text-xs">
-            💳 Secure payment • 🔒 Cancel anytime • 30-day money-back guarantee
-          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5 text-white/50 text-xs">
+            <span className="inline-flex items-center gap-1.5">
+              <CreditCard className="w-3.5 h-3.5" strokeWidth={1.75} />
+              Secure payment
+            </span>
+            <span className="text-white/25">•</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Lock className="w-3.5 h-3.5" strokeWidth={1.75} />
+              Cancel anytime
+            </span>
+            <span className="text-white/25">•</span>
+            <span>30-day money-back guarantee</span>
+          </div>
         </div>
       </div>
     </div>

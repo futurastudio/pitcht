@@ -4,6 +4,7 @@ import { apiFetch } from '@/utils/api';
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { Sparkles, BarChart3, Target, BookOpen, Lightbulb, ListChecks, AlertTriangle } from 'lucide-react';
 import { useInterview, Recording } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
 import TranscriptViewer from '@/components/TranscriptViewer';
@@ -698,7 +699,7 @@ function AnalysisContent() {
                                 )}
                                 {!hasRecordings && !isHydrating && hydrateError && (
                                     <div className="p-5 text-center bg-white/5 rounded-xl border border-white/10">
-                                        <div className="text-2xl mb-3">⚠️</div>
+                                        <AlertTriangle className="w-6 h-6 mx-auto mb-3 text-amber-300" strokeWidth={1.75} />
                                         <p className="text-sm text-white/70 font-medium mb-1">Couldn&apos;t load session</p>
                                         <p className="text-xs text-white/40 leading-relaxed">{hydrateError}</p>
                                     </div>
@@ -755,7 +756,7 @@ function AnalysisContent() {
                                 {/* AI Feedback Card */}
                                 <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6">
                                     <h3 className="text-lg font-semibold mb-4 text-white/90 flex items-center gap-2">
-                                        <span>🤖</span> AI Coach Feedback
+                                        <Sparkles className="w-4 h-4" strokeWidth={1.75} /> AI Coach Feedback
                                     </h3>
 
                                     {isGeneratingFeedback ? (
@@ -906,7 +907,7 @@ function AnalysisContent() {
                                 {/* Performance Metrics Card */}
                                 <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6 space-y-5">
                                     <h3 className="text-lg font-semibold mb-2 text-white/90 flex items-center gap-2">
-                                        <span>📊</span> Performance Metrics
+                                        <BarChart3 className="w-4 h-4" strokeWidth={1.75} /> Performance Metrics
                                     </h3>
 
                                     {(() => {
@@ -1078,7 +1079,7 @@ function AnalysisContent() {
                                 {feedback.communicationPatterns && (
                                     <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6">
                                         <h3 className="text-lg font-semibold mb-4 text-white/90 flex items-center gap-2">
-                                            <span>🎯</span> Communication Analysis
+                                            <Target className="w-4 h-4" strokeWidth={1.75} /> Communication Analysis
                                         </h3>
                                         <div className="grid grid-cols-2 gap-4">
                                             {feedback.communicationPatterns.usedStructure && (
@@ -1112,7 +1113,7 @@ function AnalysisContent() {
                                 {/* Detailed Improvements with Framework Examples */}
                                 <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6">
                                     <h3 className="text-lg font-semibold mb-4 text-white/90 flex items-center gap-2">
-                                        <span>📚</span> Coaching Framework Examples
+                                        <BookOpen className="w-4 h-4" strokeWidth={1.75} /> Coaching Framework Examples
                                     </h3>
                                     <div className="space-y-4">
                                         {feedback.improvements.map((improvement, idx) => (
@@ -1136,7 +1137,10 @@ function AnalysisContent() {
 
                                                     {/* Suggestion */}
                                                     <div className="mt-3 bg-white/5 p-3 rounded-lg border border-white/10">
-                                                        <p className="text-white/80 text-sm">💡 {improvement.suggestion}</p>
+                                                        <p className="text-white/80 text-sm flex items-start gap-2">
+                                                            <Lightbulb className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-300" strokeWidth={1.75} />
+                                                            <span>{improvement.suggestion}</span>
+                                                        </p>
                                                     </div>
 
                                                     {/* Framework Example (Collapsible) */}
@@ -1184,7 +1188,7 @@ function AnalysisContent() {
                                     {feedback.nextSteps && feedback.nextSteps.length > 0 && (
                                         <div className="mt-6 pt-6 border-t border-white/10">
                                             <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
-                                                <span>🎯</span> Next Steps
+                                                <ListChecks className="w-4 h-4" strokeWidth={1.75} /> Next Steps
                                             </h4>
                                             <ul className="space-y-2">
                                                 {feedback.nextSteps.map((step, idx) => (

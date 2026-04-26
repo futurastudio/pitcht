@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { use } from 'react';
 import { useRouter } from 'next/navigation';
+import { Briefcase, TrendingUp, Target, Sparkles, BarChart3, BookOpen, Lightbulb, ListChecks, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useInterview } from '@/context/InterviewContext';
 import { getSessionDetails, getVideoUrl } from '@/services/sessionManager';
@@ -191,10 +192,23 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
         <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-2xl p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-xl font-bold text-white mb-1">
-                {session.session_type === 'job-interview' && '💼 Job Interview'}
-                {session.session_type === 'sales-pitch' && '🚀 Sales Pitch'}
-                {session.session_type === 'presentation' && '🎯 Presentation'}
+              <h2 className="text-xl font-bold text-white mb-1 inline-flex items-center gap-2">
+                {(() => {
+                  const map: Record<string, { Icon: LucideIcon; label: string }> = {
+                    'job-interview': { Icon: Briefcase, label: 'Job Interview' },
+                    'sales-pitch': { Icon: TrendingUp, label: 'Sales Pitch' },
+                    'presentation': { Icon: Target, label: 'Presentation' },
+                  };
+                  const entry = map[session.session_type];
+                  if (!entry) return session.session_type;
+                  const { Icon, label } = entry;
+                  return (
+                    <>
+                      <Icon className="w-5 h-5 text-white/85" strokeWidth={1.5} />
+                      {label}
+                    </>
+                  );
+                })()}
               </h2>
               <p className="text-white/60 text-sm">{session.context}</p>
             </div>
@@ -280,7 +294,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                 {/* AI Feedback Card */}
                 <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6">
                   <h3 className="text-lg font-semibold mb-4 text-white/90 flex items-center gap-2">
-                    <span>🤖</span> AI Coach Feedback
+                    <Sparkles className="w-4 h-4" strokeWidth={1.75} /> AI Coach Feedback
                   </h3>
 
                   {selectedRecording.analyses && selectedRecording.analyses.length > 0 ? (
@@ -379,7 +393,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                 {/* Performance Metrics Card */}
                 <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6 space-y-5">
                   <h3 className="text-lg font-semibold mb-2 text-white/90 flex items-center gap-2">
-                    <span>📊</span> Performance Metrics
+                    <BarChart3 className="w-4 h-4" strokeWidth={1.75} /> Performance Metrics
                   </h3>
 
                   {/* Speech Metrics */}
@@ -514,7 +528,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                 {selectedRecording.analyses[0].communication_patterns && (
                   <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6">
                     <h3 className="text-lg font-semibold mb-4 text-white/90 flex items-center gap-2">
-                      <span>🎯</span> Communication Analysis
+                      <Target className="w-4 h-4" strokeWidth={1.75} /> Communication Analysis
                     </h3>
                     <div className="grid grid-cols-2 gap-4">
                       {selectedRecording.analyses[0].communication_patterns.usedStructure && (
@@ -548,7 +562,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                 {/* Detailed Improvements with Framework Examples */}
                 <div className="bg-white/10 backdrop-blur-xl border border-white/20 shadow-xl rounded-3xl p-6">
                   <h3 className="text-lg font-semibold mb-4 text-white/90 flex items-center gap-2">
-                    <span>📚</span> Coaching Framework Examples
+                    <BookOpen className="w-4 h-4" strokeWidth={1.75} /> Coaching Framework Examples
                   </h3>
                   <div className="space-y-4">
                     {selectedRecording.analyses[0].improvements.map((improvement, idx) => (
@@ -572,7 +586,10 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
 
                         {/* Suggestion */}
                         <div className="mt-3 bg-white/5 p-3 rounded-lg border border-white/10">
-                          <p className="text-white/80 text-sm">💡 {improvement.suggestion}</p>
+                          <p className="text-white/80 text-sm flex items-start gap-2">
+                            <Lightbulb className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-300" strokeWidth={1.75} />
+                            <span>{improvement.suggestion}</span>
+                          </p>
                         </div>
 
                         {/* Framework Example (Collapsible) */}
@@ -620,7 +637,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                   {selectedRecording.analyses[0].next_steps && selectedRecording.analyses[0].next_steps.length > 0 && (
                     <div className="mt-6 pt-6 border-t border-white/10">
                       <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
-                        <span>🎯</span> Next Steps
+                        <ListChecks className="w-4 h-4" strokeWidth={1.75} /> Next Steps
                       </h4>
                       <ul className="space-y-2">
                         {selectedRecording.analyses[0].next_steps.map((step: string, idx: number) => (

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Briefcase, TrendingUp, Target, FileText, Calendar } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getUserSessions, getUserProgressData } from '@/services/sessionManager';
 import SessionCard from '@/components/SessionCard';
@@ -256,33 +257,36 @@ export default function HistoryPage() {
           </button>
           <button
             onClick={() => setFilter('job-interview')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all ${
               filter === 'job-interview'
                 ? 'bg-white text-black'
                 : 'bg-white/10 text-white/70 hover:bg-white/20'
             }`}
           >
-            💼 Job Interview ({sessions.filter(s => s.session_type === 'job-interview').length})
+            <Briefcase className="w-3.5 h-3.5" strokeWidth={1.75} />
+            Job Interview ({sessions.filter(s => s.session_type === 'job-interview').length})
           </button>
           <button
             onClick={() => setFilter('sales-pitch')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all ${
               filter === 'sales-pitch'
                 ? 'bg-white text-black'
                 : 'bg-white/10 text-white/70 hover:bg-white/20'
             }`}
           >
-            🚀 Sales Pitch ({sessions.filter(s => s.session_type === 'sales-pitch').length})
+            <TrendingUp className="w-3.5 h-3.5" strokeWidth={1.75} />
+            Sales Pitch ({sessions.filter(s => s.session_type === 'sales-pitch').length})
           </button>
           <button
             onClick={() => setFilter('presentation')}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all ${
               filter === 'presentation'
                 ? 'bg-white text-black'
                 : 'bg-white/10 text-white/70 hover:bg-white/20'
             }`}
           >
-            🎯 Presentation ({sessions.filter(s => s.session_type === 'presentation').length})
+            <Target className="w-3.5 h-3.5" strokeWidth={1.75} />
+            Presentation ({sessions.filter(s => s.session_type === 'presentation').length})
           </button>
         </div>
 
@@ -294,7 +298,7 @@ export default function HistoryPage() {
           </div>
         ) : filteredSessions.length === 0 ? (
           <div className="text-center py-20 bg-white/5 rounded-3xl border border-white/10">
-            <div className="text-6xl mb-4">📝</div>
+            <FileText className="w-14 h-14 mx-auto mb-4 text-white/40" strokeWidth={1.25} />
             <h3 className="text-xl font-bold text-white mb-2">
               {filter === 'all' ? 'No sessions yet' : `No ${filter.replace('-', ' ')} sessions`}
             </h3>
@@ -316,7 +320,7 @@ export default function HistoryPage() {
             {groupedSessions.today.length > 0 && (
               <div>
                 <h2 className="text-lg font-semibold text-white/80 mb-4 flex items-center gap-2">
-                  <span>📅</span> Today
+                  <Calendar className="w-4 h-4" strokeWidth={1.75} /> Today
                 </h2>
                 <div className="space-y-4">
                   {groupedSessions.today.map(session => (
@@ -334,7 +338,7 @@ export default function HistoryPage() {
             {groupedSessions.yesterday.length > 0 && (
               <div>
                 <h2 className="text-lg font-semibold text-white/80 mb-4 flex items-center gap-2">
-                  <span>📅</span> Yesterday
+                  <Calendar className="w-4 h-4" strokeWidth={1.75} /> Yesterday
                 </h2>
                 <div className="space-y-4">
                   {groupedSessions.yesterday.map(session => (
@@ -352,7 +356,7 @@ export default function HistoryPage() {
             {groupedSessions.thisWeek.length > 0 && (
               <div>
                 <h2 className="text-lg font-semibold text-white/80 mb-4 flex items-center gap-2">
-                  <span>📅</span> This Week
+                  <Calendar className="w-4 h-4" strokeWidth={1.75} /> This Week
                 </h2>
                 <div className="space-y-4">
                   {groupedSessions.thisWeek.map(session => (
@@ -370,7 +374,7 @@ export default function HistoryPage() {
             {groupedSessions.older.length > 0 && (
               <div>
                 <h2 className="text-lg font-semibold text-white/80 mb-4 flex items-center gap-2">
-                  <span>📅</span> Older
+                  <Calendar className="w-4 h-4" strokeWidth={1.75} /> Older
                 </h2>
                 <div className="space-y-4">
                   {groupedSessions.older.map(session => (

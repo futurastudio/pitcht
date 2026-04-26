@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Sparkles, Target, MessageSquare, Eye } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
 interface AccountConversionModalProps {
@@ -58,7 +59,7 @@ export default function AccountConversionModal({ isOpen, onClose }: AccountConve
         <div className="text-center mb-6">
           {/* Success Icon */}
           <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-emerald-500 rounded-full mx-auto mb-4 flex items-center justify-center">
-            <span className="text-3xl">🎉</span>
+            <Sparkles className="w-7 h-7 text-white" strokeWidth={1.75} />
           </div>
 
           <h2 className="text-2xl font-bold text-white mb-2">Session Complete!</h2>
@@ -72,16 +73,16 @@ export default function AccountConversionModal({ isOpen, onClose }: AccountConve
           <p className="text-white/90 text-sm font-semibold mb-2">Your analysis includes:</p>
           <ul className="space-y-1.5 text-white/70 text-sm">
             <li className="flex items-center gap-2">
-              <span className="text-green-400">🎯</span> AI Performance Score
+              <Target className="w-4 h-4 text-green-400 flex-shrink-0" strokeWidth={1.75} /> AI Performance Score
             </li>
             <li className="flex items-center gap-2">
-              <span className="text-green-400">💬</span> Speech Analysis (clarity, pacing, filler words)
+              <MessageSquare className="w-4 h-4 text-green-400 flex-shrink-0" strokeWidth={1.75} /> Speech Analysis (clarity, pacing, filler words)
             </li>
             <li className="flex items-center gap-2">
-              <span className="text-green-400">👁️</span> Video Metrics (eye contact, presence)
+              <Eye className="w-4 h-4 text-green-400 flex-shrink-0" strokeWidth={1.75} /> Video Metrics (eye contact, presence)
             </li>
             <li className="flex items-center gap-2">
-              <span className="text-green-400">🤖</span> Personalized Coaching Feedback
+              <Sparkles className="w-4 h-4 text-green-400 flex-shrink-0" strokeWidth={1.75} /> Personalized Coaching Feedback
             </li>
           </ul>
         </div>

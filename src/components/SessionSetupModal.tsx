@@ -2,6 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
+import { Lightbulb, Sparkles } from 'lucide-react';
 import { useInterview } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
 import { canUserStartSession } from '@/services/subscriptionManager';
@@ -275,7 +276,10 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                                                 <p className="text-[11px] text-white/50 leading-relaxed">General questions that apply to any role</p>
                                             </div>
                                             <div className="flex-1 bg-blue-500/10 rounded-xl p-3 border border-blue-400/20">
-                                                <div className="text-[10px] text-blue-300/70 uppercase tracking-wider font-semibold mb-1">With job description ✦</div>
+                                                <div className="text-[10px] text-blue-300/70 uppercase tracking-wider font-semibold mb-1 inline-flex items-center gap-1">
+                                                    With job description
+                                                    <Sparkles className="w-2.5 h-2.5" strokeWidth={2} />
+                                                </div>
                                                 <p className="text-[11px] text-white/70 leading-relaxed">Role-specific questions tailored to the exact skills and responsibilities in the posting</p>
                                             </div>
                                         </div>
@@ -293,7 +297,7 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                                     /* JD nudge — shown once when Start is clicked with empty context */
                                     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
                                         <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4">
-                                            <span className="text-base mt-0.5 flex-shrink-0">💡</span>
+                                            <Lightbulb className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-300" strokeWidth={1.75} />
                                             <div>
                                                 <p className="text-amber-200 text-sm font-semibold mb-0.5">
                                                     Tip: paste a job description for much better questions

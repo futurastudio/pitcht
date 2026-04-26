@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Briefcase, GraduationCap, Mic, Video, Sparkles, BarChart3 } from 'lucide-react';
 
 interface OnboardingModalProps {
     isOpen: boolean;
@@ -30,15 +31,18 @@ function StepOne() {
     // pointer-events-none + select-none make it clear these tiles are not
     // clickable in the onboarding preview — the real picker lives on the
     // home page after the user dismisses this overlay.
+    const tiles = [
+        { Icon: Briefcase, label: 'Job Interview', color: 'from-blue-500/20 to-cyan-400/20' },
+        { Icon: GraduationCap, label: 'Internship', color: 'from-orange-500/20 to-red-400/20' },
+        { Icon: Mic, label: 'Presentation', color: 'from-purple-500/20 to-pink-400/20' },
+    ];
     return (
         <div className="grid grid-cols-3 gap-2 my-5 pointer-events-none select-none">
-            {[
-                { icon: '💼', label: 'Job Interview', color: 'from-blue-500/20 to-cyan-400/20' },
-                { icon: '🎯', label: 'Internship', color: 'from-orange-500/20 to-red-400/20' },
-                { icon: '🎤', label: 'Presentation', color: 'from-purple-500/20 to-pink-400/20' },
-            ].map((s) => (
+            {tiles.map((s) => (
                 <div key={s.label} className={`bg-gradient-to-br ${s.color} border border-white/15 rounded-2xl p-4 text-center`}>
-                    <div className="text-3xl mb-1.5">{s.icon}</div>
+                    <div className="flex justify-center mb-1.5 text-white/85">
+                        <s.Icon className="w-7 h-7" strokeWidth={1.5} />
+                    </div>
                     <div className="text-[11px] text-white/70 font-medium leading-tight">{s.label}</div>
                 </div>
             ))}
@@ -63,17 +67,18 @@ function StepTwo() {
 }
 
 function StepThree() {
+    const steps = [
+        { Icon: Video, label: 'Record answer' },
+        { Icon: Sparkles, label: 'AI analyzes' },
+        { Icon: BarChart3, label: 'Get coached' },
+    ];
     return (
         <div className="my-5 space-y-3">
             <div className="flex items-stretch gap-2">
-                {[
-                    { icon: '🎬', label: 'Record answer' },
-                    { icon: '🤖', label: 'AI analyzes' },
-                    { icon: '📊', label: 'Get coached' },
-                ].map((item, idx) => (
+                {steps.map((item, idx) => (
                     <React.Fragment key={item.label}>
                         <div className="flex-1 flex flex-col items-center justify-center bg-white/5 border border-white/10 rounded-xl py-3 px-2">
-                            <span className="text-2xl mb-1">{item.icon}</span>
+                            <item.Icon className="w-5 h-5 mb-1 text-white/80" strokeWidth={1.5} />
                             <span className="text-[11px] text-white/60 font-medium text-center leading-tight">{item.label}</span>
                         </div>
                         {idx < 2 && (

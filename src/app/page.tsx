@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { Briefcase, GraduationCap, Mic, Lock } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import SessionSetupModal from '@/components/SessionSetupModal';
 import PaywallModal from '@/components/PaywallModal';
@@ -11,21 +12,21 @@ const SESSION_TYPES = [
     id: 'job-interview',
     title: 'Job Interview',
     description: 'Paste a job description. AI generates role-specific questions, analyzes your clarity, pacing, and eye contact — and gives you answer frameworks for every response.',
-    icon: '💼',
+    Icon: Briefcase,
     color: 'from-blue-500 to-cyan-400',
   },
   {
     id: 'internship-interview',
     title: 'Internship Interview',
     description: 'Behavioral and domain-tailored questions for your field. Instant feedback on your structure, delivery, and presence — with answer frameworks to improve each response.',
-    icon: '🎯',
+    Icon: GraduationCap,
     color: 'from-orange-500 to-red-400',
   },
   {
     id: 'presentation',
     title: 'Presentation',
     description: 'Practice your pitch, case study, or presentation. AI measures your pace, confidence, and audience engagement.',
-    icon: '🎤',
+    Icon: Mic,
     color: 'from-purple-500 to-pink-400',
   },
 ];
@@ -105,11 +106,11 @@ export default function Dashboard() {
 
               {/* Lock badge for exhausted free users */}
               {isExhaustedFreeUser && (
-                <span className="absolute top-4 right-4 text-white/30 text-sm">🔒</span>
+                <Lock className="absolute top-4 right-4 w-4 h-4 text-white/30" strokeWidth={1.75} />
               )}
 
-              <span className="text-4xl mb-6 block transform group-hover:scale-110 transition-transform duration-300 drop-shadow-md">
-                {session.icon}
+              <span className="mb-6 block text-white/85 transform group-hover:scale-110 transition-transform duration-300 drop-shadow-md">
+                <session.Icon className="w-9 h-9" strokeWidth={1.5} />
               </span>
 
               <h3 className="text-2xl font-semibold text-white mb-2 group-hover:text-white/90 drop-shadow-sm">
