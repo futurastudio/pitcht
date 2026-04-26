@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/utils/api';
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useInterview, Recording } from '@/context/InterviewContext';
@@ -160,6 +160,75 @@ function AnalysisContent() {
         return () => { cancelled = true; };
     }, [sessionIdParam, user, authLoading]);
 
+    // ── Transcript-completion polling ───────────────────────────────────────
+    //
+    // The /interview page kicks off Whisper transcription as a background
+    // promise. If the user clicked through the last question while a
+    // transcription was still in-flight, the recordings row exists in the
+    // DB but transcript / words_per_minute / clarity_score are still null.
+    // /interview now awaits those before navigating, but the user could
+    // also arrive here via History (deep link to a session whose final
+    // transcript landed seconds after the user navigated away).
+    //
+    // To keep the UI honest, poll every 2s for up to ~30s while any
+    // recording in this session is still missing its transcript. Stop
+    // as soon as everything is hydrated (or attempts are exhausted).
+    const pollAttemptsRef = useRef(0);
+    useEffect(() => {
+        // Reset attempt counter whenever we change sessions so a stale
+        // count doesn't suppress polling on the next session view.
+        pollAttemptsRef.current = 0;
+    }, [sessionIdParam]);
+
+    useEffect(() => {
+        if (!sessionIdParam || !user || authLoading) return;
+        if (!hydratedRecordings || hydratedRecordings.length === 0) return;
+
+        // A row is "incomplete" if its transcript hasn't landed yet OR if
+        // transcript exists but the speech metrics that derive from it
+        // haven't been written yet (the transcribe → metrics → DB-update
+        // chain on /interview writes both atomically, so a partial state
+        // means we just caught it mid-flight).
+        const hasIncompleteRow = hydratedRecordings.some(
+            (r) => !r.transcript || r.wordsPerMinute === undefined
+        );
+        if (!hasIncompleteRow) return;
+
+        // Cap attempts so we never poll forever on a row that genuinely
+        // has no transcript (e.g. transcription failed permanently).
+        const MAX_ATTEMPTS = 15; // ~30s at 2s intervals
+        if (pollAttemptsRef.current >= MAX_ATTEMPTS) return;
+
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            if (cancelled) return;
+            pollAttemptsRef.current += 1;
+            try {
+                const data = await getSessionDetails(sessionIdParam);
+                if (cancelled) return;
+                if (data && data.user_id && data.user_id !== user.id) return;
+                const questionRows: DbQuestionRow[] = (data?.questions as DbQuestionRow[]) || [];
+                const questionMap = new Map<string, DbQuestionRow>(questionRows.map(q => [q.id, q]));
+                const rows: DbRecordingRow[] = ((data?.recordings as DbRecordingRow[]) || []).slice().sort((a, b) => {
+                    const qa = questionMap.get(a.question_id || '');
+                    const qb = questionMap.get(b.question_id || '');
+                    return (qa?.order_index ?? 0) - (qb?.order_index ?? 0);
+                });
+                const mapped: Recording[] = rows.map(r => dbRowToRecording(r, questionMap.get(r.question_id || '')));
+                setHydratedRecordings(mapped);
+            } catch (err) {
+                // Silent — polling is best-effort. The user already has a
+                // partially-populated UI; we just won't refresh it this tick.
+                console.warn('Transcript poll failed:', err);
+            }
+        }, 2000);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [hydratedRecordings, sessionIdParam, user, authLoading]);
+
     // Empty-state routing. Auth is enforced upstream (SessionSetupModal) so an unauthenticated
     // user should never legitimately reach /analysis — bounce home. Authenticated users with no
     // recordings to show are bounced to /history where they can start a new session.
@@ -178,6 +247,17 @@ function AnalysisContent() {
     useEffect(() => {
         if (recordings.length > 0 && !selectedRecording) {
             setSelectedRecording(recordings[0]);
+            return;
+        }
+        // Keep selectedRecording in sync with the latest hydrated row.
+        // Without this, the polling effect refreshes the recordings list
+        // but the right-pane view still references the pre-polling object
+        // (no transcript, missing metrics). Match by recordingId.
+        if (selectedRecording) {
+            const fresh = recordings.find(r => r.recordingId === selectedRecording.recordingId);
+            if (fresh && fresh !== selectedRecording) {
+                setSelectedRecording(fresh);
+            }
         }
     }, [recordings, selectedRecording]);
 

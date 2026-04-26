@@ -134,6 +134,61 @@ class FaceTrackerService {
   }
 
   /**
+   * Warm up the FaceMesh wasm + model so the first real frame
+   * after startTracking() doesn't pay the cold-load cost.
+   *
+   * Called proactively when the camera becomes ready, well before
+   * the user actually starts recording. Safe to call multiple times —
+   * later calls are essentially no-ops.
+   *
+   * Best-effort: any error is swallowed because warmup is purely
+   * a performance hint, never required for correctness.
+   */
+  async warmup(): Promise<void> {
+    if (!this.faceMesh || !this.videoElement) return;
+
+    // Make sure tracking is OFF during warmup so the throwaway frame
+    // doesn't pollute metrics. onResults is gated on isTracking.
+    const wasTracking = this.isTracking;
+    this.isTracking = false;
+
+    try {
+      // Wait for video to actually have data — sending a frame from a
+      // 0x0 video element is a no-op that doesn't trigger wasm load.
+      if (this.videoElement.readyState < 2 || this.videoElement.videoWidth === 0) {
+        // Give the camera up to ~500ms to deliver a frame.
+        await new Promise<void>((resolve) => {
+          const start = Date.now();
+          const tick = () => {
+            if (
+              this.videoElement &&
+              this.videoElement.readyState >= 2 &&
+              this.videoElement.videoWidth > 0
+            ) {
+              resolve();
+            } else if (Date.now() - start > 500) {
+              resolve();
+            } else {
+              requestAnimationFrame(tick);
+            }
+          };
+          tick();
+        });
+      }
+
+      if (this.videoElement && this.videoElement.videoWidth > 0) {
+        await this.faceMesh.send({ image: this.videoElement });
+      }
+    } catch {
+      // Warmup is best-effort. Failures are non-fatal.
+    } finally {
+      this.isTracking = wasTracking;
+      // Clear any counters the warmup frame may have bumped.
+      this.resetMetrics();
+    }
+  }
+
+  /**
    * Start tracking
    */
   async startTracking(): Promise<void> {
@@ -520,6 +575,10 @@ export async function initializeFaceTracker(videoElement: HTMLVideoElement): Pro
 
 export async function startTracking(): Promise<void> {
   return faceTracker.startTracking();
+}
+
+export async function warmupFaceTracker(): Promise<void> {
+  return faceTracker.warmup();
 }
 
 export function stopTracking(): EyeTrackingMetrics {

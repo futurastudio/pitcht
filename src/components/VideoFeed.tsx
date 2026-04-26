@@ -171,7 +171,17 @@ export default function VideoFeed() {
     useEffect(() => {
         if (videoRef.current && !isTrackerReady && cameraStatus === 'ready') {
             tracker.initialize(videoRef.current)
-                .then(() => setIsTrackerReady(true))
+                .then(() => {
+                    setIsTrackerReady(true);
+                    // Fire a single warmup frame through MediaPipe so the wasm/
+                    // model download + first inference cost is paid NOW (while
+                    // the user is still reading the question), not on the first
+                    // frame of the actual recording. Best-effort, non-blocking.
+                    tracker.warmup().catch(() => {
+                        // Warmup failures are non-fatal — tracking still works,
+                        // it'll just have its usual cold-start hitch.
+                    });
+                })
                 .catch((err: Error) => {
                     console.warn('Face tracker failed to initialize (continuing without eye tracking):', err);
                     setFaceTrackingFailed(true);
@@ -242,6 +252,51 @@ export default function VideoFeed() {
             audioRecorderRef.current = audioRecorder;
 
             setCameraStatus('ready');
+
+            // ── Pre-flush MediaRecorder encoders ────────────────────────────
+            //
+            // VP8/Opus encoders take ~300-500ms to produce their first frame
+            // on a cold start. If the user hits "Record" within that window,
+            // the visible recording lags behind reality — the camera looks
+            // frozen, then the recording "catches up" a moment later.
+            //
+            // We work around this by running a tiny throwaway start/stop
+            // cycle right after the recorder is constructed, well before
+            // the user could possibly press Record. The ondataavailable
+            // handler will push warmup chunks into chunksRef.current, but
+            // window.startRecording() resets that array to [] before the
+            // real recording starts, so warmup data is discarded cleanly.
+            //
+            // Best-effort. If it throws (some browsers don't allow rapid
+            // start/stop), we just continue — the user gets the standard
+            // first-frame lag, but everything else still works.
+            try {
+                if (mediaRecorder.state === 'inactive') {
+                    mediaRecorder.start();
+                    if (audioRecorder.state === 'inactive') {
+                        audioRecorder.start();
+                    }
+                    setTimeout(() => {
+                        try {
+                            if (mediaRecorder.state === 'recording') {
+                                mediaRecorder.stop();
+                            }
+                            if (audioRecorder.state === 'recording') {
+                                audioRecorder.stop();
+                            }
+                            // Drop any warmup chunks. window.startRecording()
+                            // also clears these, but resetting here keeps the
+                            // arrays small in the gap before the user records.
+                            chunksRef.current = [];
+                            audioChunksRef.current = [];
+                        } catch {
+                            // Stop call failed — recorder will recover on next start.
+                        }
+                    }, 150);
+                }
+            } catch {
+                // Pre-flush failed. Non-fatal — proceed without warmup.
+            }
         } catch (err) {
             console.error('Camera access denied:', err);
             setCameraStatus('denied');

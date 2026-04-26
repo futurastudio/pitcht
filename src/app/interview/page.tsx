@@ -42,6 +42,17 @@ export default function InterviewPage() {
         recordingsCountRef.current = recordings.length;
     }, [recordings]);
 
+    // Track in-flight transcription → DB-update pipelines so we can:
+    //   1. Warn the user with a beforeunload prompt if they try to close
+    //      the tab while answers are still being saved.
+    //   2. Await drainage on the FINAL question before navigating to
+    //      /analysis, so the analysis page sees fully-hydrated rows.
+    //
+    // Counter is for the unload guard (synchronous read).
+    // Promise array is for the navigation drain (async wait).
+    const pendingTranscriptionsRef = useRef(0);
+    const pendingDbUpdatesRef = useRef<Promise<void>[]>([]);
+
     // Keep the Supabase access token available synchronously for the sendBeacon
     // callback — beacon fires during page unload where we cannot await async calls.
     const accessTokenRef = useRef<string | null>(null);
@@ -78,6 +89,25 @@ export default function InterviewPage() {
             setSessionElapsed(prev => prev + 1);
         }, 1000);
         return () => clearInterval(sessionTimer);
+    }, []);
+
+    // beforeunload guard: warn the user if they try to close the tab while
+    // any transcription → DB update is still in-flight. Prevents the
+    // exact silent-data-loss pattern Fabiana hit (clicked through fast,
+    // closed tab before transcripts were saved → analysis page empty).
+    useEffect(() => {
+        const handler = (e: BeforeUnloadEvent) => {
+            if (pendingTranscriptionsRef.current > 0) {
+                e.preventDefault();
+                // returnValue is the legacy way to trigger the prompt;
+                // some browsers ignore custom strings and show a generic
+                // "Leave site?" dialog regardless.
+                e.returnValue = '';
+                return '';
+            }
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
     }, []);
 
     // Mark session as completed when user closes/leaves the tab mid-session
@@ -458,7 +488,8 @@ export default function InterviewPage() {
                 if (savedRecordingId) {
                     // Capture in a const so TS narrows inside the async callback
                     const recordingIdForPipeline: string = savedRecordingId;
-                    transcriptionPromise.then(async ({ transcript, duration }) => {
+                    pendingTranscriptionsRef.current += 1;
+                    const dbUpdatePromise: Promise<void> = transcriptionPromise.then(async ({ transcript, duration }) => {
                         if (!transcript || !duration) return;
 
                         const speechMetrics = analyzeSpeech(transcript, duration);
@@ -526,7 +557,13 @@ export default function InterviewPage() {
                             description: 'Your answer could not be processed. Data has been saved for retry.',
                             duration: 7000,
                         });
+                    }).finally(() => {
+                        // Decrement the in-flight counter regardless of outcome.
+                        // Both the unload guard and the final-question drain rely
+                        // on this hitting zero when the pipeline is fully done.
+                        pendingTranscriptionsRef.current = Math.max(0, pendingTranscriptionsRef.current - 1);
                     });
+                    pendingDbUpdatesRef.current.push(dbUpdatePromise);
                 }
             }
 
@@ -534,6 +571,22 @@ export default function InterviewPage() {
             if (currentQuestionIndex < questions.length - 1) {
                 setCurrentQuestionIndex(prev => prev + 1);
             } else {
+                // Final question: drain any in-flight transcription → DB
+                // update pipelines before navigating, so /analysis sees
+                // fully-hydrated rows. Bounded by a 30s timeout so we
+                // never trap the user on this page if Whisper is slow.
+                const pending = [...pendingDbUpdatesRef.current];
+                if (pending.length > 0 && pendingTranscriptionsRef.current > 0) {
+                    toast.info('Saving your answers…', {
+                        description: 'Finishing up the last few transcripts before showing your analysis.',
+                        duration: 4000,
+                    });
+                    await Promise.race([
+                        Promise.allSettled(pending),
+                        new Promise<void>((resolve) => setTimeout(resolve, 30000)),
+                    ]);
+                }
+
                 if (sessionId) {
                     try {
                         await completeSession(sessionId);
