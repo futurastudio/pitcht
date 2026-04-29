@@ -53,8 +53,9 @@ export default function PricingPage() {
 
   const handleSubscribe = async (priceId: string, _planName: string) => {
     if (!user) {
-      // Redirect to home to sign up first
-      router.push('/?signup=true');
+      // Stay on pricing — Header reads ?signup=true and opens the modal,
+      // so users keep the plan context while signing up.
+      router.push('/pricing?signup=true');
       return;
     }
 
@@ -179,7 +180,7 @@ export default function PricingPage() {
 
             {!user ? (
               <Link
-                href="/?signup=true"
+                href="/pricing?signup=true"
                 className="block w-full bg-white/10 hover:bg-white/20 active:bg-white/30 backdrop-blur-lg border border-white/20 transition-all duration-200 py-3 rounded-full text-center font-semibold"
               >
                 Start Free Trial

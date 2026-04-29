@@ -1,10 +1,31 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams, usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import LoginModal from './LoginModal';
 import SignupModal from './SignupModal';
+
+// Watches `?signup=true` and fires the callback once. Isolated in its own
+// component (and Suspense-wrapped below) because useSearchParams opts the
+// host page out of static prerendering — keeping it here means callers
+// don't need their own Suspense boundary.
+function SignupParamWatcher({ onTrigger }: { onTrigger: () => void }) {
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (searchParams.get('signup') === 'true') {
+      onTrigger();
+      router.replace(pathname, { scroll: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  return null;
+}
 
 export default function Header() {
   const { user, subscriptionStatus, signOut } = useAuth();
@@ -14,6 +35,14 @@ export default function Header() {
 
   return (
     <>
+      <Suspense fallback={null}>
+        <SignupParamWatcher
+          onTrigger={() => {
+            if (!user) setShowSignup(true);
+          }}
+        />
+      </Suspense>
+
       <header className="absolute top-0 left-0 right-0 z-40 p-6">
         <div className="flex justify-between items-center">
           {/* Logo */}
