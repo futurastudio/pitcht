@@ -28,7 +28,6 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
     const [error, setError] = useState<string | null>(null);
     const [showPaywall, setShowPaywall] = useState(false);
     const [paywallReason, setPaywallReason] = useState('');
-    const [sessionsUsed, setSessionsUsed] = useState(0);
 
     // Auth gate: show signup/login when unauthenticated user tries to start
     const [showSignup, setShowSignup] = useState(false);
@@ -130,7 +129,6 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
             if (!check.allowed) {
                 setShowPaywall(true);
                 setPaywallReason(check.reason || "You've reached your session limit.");
-                setSessionsUsed(check.sessionsThisMonth || 0);
                 setIsGenerating(false);
                 return;
             }
@@ -354,7 +352,6 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                         onClose();
                     }}
                     reason={paywallReason}
-                    sessionsUsed={sessionsUsed}
                 />
             </div>
 

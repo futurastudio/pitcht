@@ -72,11 +72,10 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
   const [isLoading, setIsLoading] = useState(true);
   const [openExamples, setOpenExamples] = useState<Record<number, boolean>>({});
   const [isVideoExpanded, setIsVideoExpanded] = useState(false);
-  // Paywall state — gates "Practice Again" for free-tier users who've used their
-  // lifetime session. Pro / trialing users never see this. See handler below.
+  // Paywall state — gates "Practice Again" for free-tier users who've used all
+  // their trial sessions. Pro / trialing users never see this. See handler below.
   const [showPaywall, setShowPaywall] = useState(false);
   const [paywallReason, setPaywallReason] = useState<string | undefined>(undefined);
-  const [sessionsUsedForPaywall, setSessionsUsedForPaywall] = useState(1);
   const [isCheckingEntitlement, setIsCheckingEntitlement] = useState(false);
 
   // Redirect to home if not logged in
@@ -702,7 +701,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
 
             {/* #32 Practice Again
                 PAYWALL GATE: same policy as /analysis — free-tier users who've used
-                their 1 lifetime session get the upgrade modal instead of a bypass.
+                all their trial sessions get the upgrade modal instead of a bypass.
                 Pro / trialing users skip the DB check and navigate immediately. */}
             {session && session.questions.length > 0 && selectedRecording && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 pt-2">
@@ -748,7 +747,6 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                       const check = await canUserStartSession(user.id);
                       if (!check.allowed) {
                         setPaywallReason(check.reason);
-                        setSessionsUsedForPaywall(check.sessionsThisMonth || 1);
                         setShowPaywall(true);
                         return;
                       }
@@ -773,12 +771,11 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
               </div>
             )}
 
-            {/* Paywall — shown when a free-tier user tries Practice Again after using their free session. */}
+            {/* Paywall — shown when a free-tier user tries Practice Again after using their free trial. */}
             <PaywallModal
               isOpen={showPaywall}
               onClose={() => setShowPaywall(false)}
               reason={paywallReason}
-              sessionsUsed={sessionsUsedForPaywall}
             />
 
           </div>

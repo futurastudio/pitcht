@@ -8,10 +8,9 @@ interface PaywallModalProps {
   isOpen: boolean;
   onClose: () => void;
   reason?: string;
-  sessionsUsed?: number;
 }
 
-export default function PaywallModal({ isOpen, onClose, reason, sessionsUsed = 1 }: PaywallModalProps) {
+export default function PaywallModal({ isOpen, onClose, reason }: PaywallModalProps) {
   const router = useRouter();
 
   if (!isOpen) return null;

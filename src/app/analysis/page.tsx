@@ -103,7 +103,6 @@ function AnalysisContent() {
     // Premium/trialing users skip this entirely. See runPracticeAgain below.
     const [showPaywall, setShowPaywall] = useState(false);
     const [paywallReason, setPaywallReason] = useState<string | undefined>(undefined);
-    const [sessionsUsedForPaywall, setSessionsUsedForPaywall] = useState(1);
     const [isCheckingEntitlement, setIsCheckingEntitlement] = useState(false);
 
     // Prefer DB-hydrated recordings when we've loaded from ?sessionId, otherwise use context.
@@ -1293,10 +1292,10 @@ function AnalysisContent() {
                         ) : null}
 
                         {/* #32 Practice Again
-                            PAYWALL GATE: free-tier users who've used their 1 lifetime session
+                            PAYWALL GATE: free-tier users who've used all their trial sessions
                             must hit the paywall. Before this fix the button was a plain <Link>
                             with no subscription check — a free user could click "Practice Again"
-                            from the analysis page and silently get a second session for free,
+                            from the analysis page and silently get an extra session for free,
                             bypassing the gate that SessionSetupModal already applies on the
                             home-page "Start" flow. Pro / trialing users skip the check and
                             proceed immediately. */}
@@ -1329,7 +1328,6 @@ function AnalysisContent() {
                                             const check = await canUserStartSession(user.id);
                                             if (!check.allowed) {
                                                 setPaywallReason(check.reason);
-                                                setSessionsUsedForPaywall(check.sessionsThisMonth || 1);
                                                 setShowPaywall(true);
                                                 return;
                                             }
@@ -1361,7 +1359,6 @@ function AnalysisContent() {
                             isOpen={showPaywall}
                             onClose={() => setShowPaywall(false)}
                             reason={paywallReason}
-                            sessionsUsed={sessionsUsedForPaywall}
                         />
 
                     </div>
