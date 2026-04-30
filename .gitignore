@@ -75,3 +75,4 @@ electron/preload.js
 
 # VSCode
 /.vscode/
+.env*.local

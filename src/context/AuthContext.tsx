@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/services/supabase';
 import { convertAnonymousToRealAccount } from '@/services/auth';
+import { TRIAL_SESSION_LIMIT } from '@/services/subscriptionManager';
 import type { User } from '@supabase/supabase-js';
 
 interface SubscriptionStatus {
@@ -124,10 +125,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Check free trial usage: 1 completed session lifetime.
-      // Only count completed sessions — an abandoned/in-progress session does not
-      // consume the trial so users aren't permanently locked out by a refresh or crash.
-      // Trial status comes exclusively from the subscriptions table (managed by Stripe webhooks).
+      // Check free trial usage: only count completed sessions, so an abandoned
+      // or in-progress session does not consume the trial (no permanent lockout
+      // from a refresh or crash). Trial status comes exclusively from the
+      // subscriptions table (managed by Stripe webhooks).
       const { count } = await supabase
         .from('sessions')
         .select('*', { count: 'exact', head: true })
@@ -135,7 +136,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('status', 'completed');
 
       const sessionsTotal = count || 0;
-      const TRIAL_SESSION_LIMIT = 1;
 
       setSubscriptionStatus({
         isPremium: false,

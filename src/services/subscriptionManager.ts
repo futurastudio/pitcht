@@ -5,6 +5,12 @@
 
 import { supabase } from './supabase';
 
+// Single source of truth for the free-tier session cap. Imported by
+// AuthContext (gating) and Header/settings UI (display). If you change
+// this, ensure no copy-paste literals remain via:
+//   grep -rn "TRIAL_SESSION_LIMIT\|/[ ]*1 sessions\|/[ ]*1 used" src/
+export const TRIAL_SESSION_LIMIT = 3;
+
 export interface SubscriptionCheckResult {
   allowed: boolean;
   reason?: string;
@@ -17,7 +23,7 @@ export interface SubscriptionCheckResult {
 
 /**
  * Check if user can start a new session
- * Enforces: 1 session/month for free tier, unlimited for trial/premium
+ * Enforces: TRIAL_SESSION_LIMIT lifetime sessions for free tier, unlimited for trial/premium
  */
 export async function canUserStartSession(userId: string): Promise<SubscriptionCheckResult> {
   try {
@@ -70,8 +76,6 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       .eq('status', 'completed');
 
     const sessionsThisMonth = count || 0;
-    // Trial users get exactly 1 session total (counted lifetime, not per-month)
-    const TRIAL_SESSION_LIMIT = 1;
 
     if (sessionsThisMonth >= TRIAL_SESSION_LIMIT) {
       return {
@@ -102,7 +106,7 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       isTrialing: false,
       trialEndsAt: null,
       sessionsThisMonth: 0,
-      sessionsRemaining: 1,
+      sessionsRemaining: TRIAL_SESSION_LIMIT,
     };
   }
 }

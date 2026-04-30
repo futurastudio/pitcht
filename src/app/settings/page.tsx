@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import { AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/services/supabase';
+import { TRIAL_SESSION_LIMIT } from '@/services/subscriptionManager';
 import Header from '@/components/Header';
 import { toast } from 'sonner';
 
@@ -322,9 +323,9 @@ export default function SettingsPage() {
 
             {!subscriptionStatus.isPremium && !subscriptionStatus.isTrialing && (
               <div>
-                <label className="text-white/50 text-sm">Sessions This Month</label>
+                <label className="text-white/50 text-sm">Free Trial Sessions</label>
                 <p className="text-white text-lg">
-                  {subscriptionStatus.sessionsThisMonth} / 1 used
+                  {subscriptionStatus.sessionsThisMonth} / {TRIAL_SESSION_LIMIT} used
                 </p>
               </div>
             )}

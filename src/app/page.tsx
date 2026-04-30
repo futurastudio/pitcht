@@ -107,7 +107,7 @@ export default function Dashboard() {
               ? 'Trial active — make your session count.'
               : isExhaustedFreeUser
               ? null
-              : 'Free to try — 1 session, no credit card.';
+              : 'Free to try — 3 sessions, no credit card.';
             return line ? (
               <p className="text-sm text-white/50 font-medium pt-1">{line}</p>
             ) : null;

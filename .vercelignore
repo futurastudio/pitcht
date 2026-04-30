@@ -1,0 +1,13 @@
+node_modules
+.next
+out
+build
+dist
+electron-dist
+release
+coverage
+audit-artifacts
+python-services
+tmp
+*.log
+.env*.local
