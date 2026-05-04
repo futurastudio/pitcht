@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
 import { AuthProvider } from "@/context/AuthContext";
 import { InterviewProvider } from "@/context/InterviewContext";
 import { CameraProvider } from "@/context/CameraContext";
@@ -56,6 +57,8 @@ export default function RootLayout({
             </CameraProvider>
           </InterviewProvider>
         </AuthProvider>
+        {/* Analytics */}
+        <Analytics />
         {/* Toast Notifications */}
         <Toaster position="top-right" richColors />
       </body>

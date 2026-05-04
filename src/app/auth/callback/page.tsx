@@ -40,11 +40,29 @@ function CallbackHandler() {
     }
 
     // Exchange the PKCE code for a session, stored in localStorage
-    supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+    supabase.auth.exchangeCodeForSession(code).then(({ data, error }) => {
       if (error) {
         console.error('OAuth code exchange error:', error.message);
         router.push('/?error=auth_failed');
       } else {
+        // Notify on new Google signup
+        if (data.user?.id && data.user?.email) {
+          // Only notify if this is a truly new user (created_at ~= now)
+          const createdAt = new Date(data.user.created_at);
+          const now = new Date();
+          const minutesSinceCreation = (now.getTime() - createdAt.getTime()) / 1000 / 60;
+          if (minutesSinceCreation < 5) {
+            fetch('/api/notify-signup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: data.user.id,
+                email: data.user.email,
+                signupMethod: 'google',
+              }),
+            }).catch((err) => console.error('[auth-callback] Signup notification failed:', err));
+          }
+        }
         router.push(next);
       }
     });

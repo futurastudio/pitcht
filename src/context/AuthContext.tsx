@@ -186,6 +186,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
+async function sendSignupNotification(userId: string, email: string, signupMethod: 'email' | 'google') {
+  try {
+    await fetch('/api/notify-signup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, email, signupMethod }),
+    });
+  } catch (err) {
+    // Silent fail — don't block signup on notification error
+    console.error('[auth] Signup notification failed:', err);
+  }
+}
+
   const signUp = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -207,6 +220,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     setUser(data.user);
+
+    // Notify on new signup
+    if (data.user?.id && data.user?.email) {
+      await sendSignupNotification(data.user.id, data.user.email, 'email');
+    }
   };
 
   const signOut = async () => {
