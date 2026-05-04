@@ -33,21 +33,6 @@ export default function Header() {
   const [showLogin, setShowLogin] = useState(false);
   const [showSignup, setShowSignup] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
-  const router = useRouter();
-
-  // Auto-open signup modal when ?signup=true is present in URL
-  useEffect(() => {
-    if (searchParams.get('signup') === 'true' && !user) {
-      setShowSignup(true);
-      // Clean the URL param so back-button doesn't re-trigger the modal
-      const cleanUrl = pathname;
-      router.replace(cleanUrl, { scroll: false });
-    }
-  // Only run on mount / when searchParams changes to 'true'
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, user]);
 
   return (
     <>
