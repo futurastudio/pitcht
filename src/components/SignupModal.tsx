@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { trackEvent, AnalyticsEvents } from '@/utils/analytics';
 
 interface SignupModalProps {
   isOpen: boolean;
@@ -19,6 +20,12 @@ export default function SignupModal({ isOpen, onClose, onLogin, onSignupComplete
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      trackEvent(AnalyticsEvents.SIGNUP_STARTED);
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

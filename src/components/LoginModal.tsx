@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { trackEvent, AnalyticsEvents } from '@/utils/analytics';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -22,6 +23,12 @@ export default function LoginModal({ isOpen, onClose, onSignup, onLoginComplete 
   // form for an email-only form that triggers Supabase's password reset email.
   const [mode, setMode] = useState<'login' | 'forgot'>('login');
   const [resetSent, setResetSent] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      trackEvent(AnalyticsEvents.LOGIN_STARTED);
+    }
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -15,6 +15,7 @@
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { supabase } from '@/services/supabase';
+import { identifyUser, trackEvent, AnalyticsEvents } from '@/utils/analytics';
 
 function CallbackHandler() {
   const router = useRouter();
@@ -61,6 +62,9 @@ function CallbackHandler() {
                 signupMethod: 'google',
               }),
             }).catch((err) => console.error('[auth-callback] Signup notification failed:', err));
+
+            identifyUser(data.user.id, { email: data.user.email, signup_method: 'google' });
+            trackEvent(AnalyticsEvents.SIGNUP_COMPLETED, { method: 'google' });
           }
         }
         router.push(next);

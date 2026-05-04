@@ -14,6 +14,7 @@ import { analyzeVideoPath } from '@/services/emotionAnalyzer';
 import { calculatePresenceScore } from '@/services/videoAnalyzer';
 import { analyzeSpeech, SpeechMetrics } from '@/services/speechAnalyzer';
 import { completeSession } from '@/services/sessionManager';
+import { trackEvent, AnalyticsEvents } from '@/utils/analytics';
 import { toast } from 'sonner';
 import * as Sentry from '@sentry/nextjs';
 
@@ -663,6 +664,7 @@ export default function InterviewPage() {
             if (sessionId) {
                 try {
                     await completeSession(sessionId);
+                    trackEvent(AnalyticsEvents.SESSION_COMPLETED, { session_id: sessionId, questions_answered: currentQuestionIndex + 1 });
                 } catch (error) {
                     console.error('Failed to complete session:', error);
                     Sentry.captureException(error, {

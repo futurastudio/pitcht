@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { FaceTracker } from '@/services/faceTracker';
 import type { EyeTrackingMetrics } from '@/services/faceTracker';
 import { useCameraStatus } from '@/context/CameraContext';
+import { trackEvent, AnalyticsEvents } from '@/utils/analytics';
 
 type Browser = 'chrome' | 'safari' | 'firefox' | 'other';
 
@@ -198,6 +199,15 @@ export default function VideoFeed() {
             }
         }
     }, [isCurrentlyRecording, isTrackerReady, tracker]);
+
+    // ── Camera permission analytics ─────────────────────────────────────────
+    useEffect(() => {
+        if (cameraStatus === 'ready') {
+            trackEvent(AnalyticsEvents.RECORDING_PERMISSION_GRANTED);
+        } else if (cameraStatus === 'denied') {
+            trackEvent(AnalyticsEvents.RECORDING_PERMISSION_DENIED);
+        }
+    }, [cameraStatus]);
 
     // ── Camera acquisition (also called on retry) ───────────────────────────
     const setupCamera = useCallback(async () => {

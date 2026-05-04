@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { supabase } from '@/services/supabase';
 import { convertAnonymousToRealAccount } from '@/services/auth';
 import { TRIAL_SESSION_LIMIT } from '@/services/subscriptionManager';
+import { identifyUser, trackEvent, AnalyticsEvents } from '@/utils/analytics';
 import type { User } from '@supabase/supabase-js';
 
 interface SubscriptionStatus {
@@ -75,14 +76,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           sessionsThisMonth: 0,
           canStartSession: true,
         });
+        trackEvent(AnalyticsEvents.LOGOUT);
       } else if (session?.user) {
         // SIGNED_IN, INITIAL_SESSION, TOKEN_REFRESHED, USER_UPDATED, PASSWORD_RECOVERY
         setUser(session.user);
+        identifyUser(session.user.id, { email: session.user.email });
         // On explicit sign-in or initial session load, immediately fetch the real
         // subscription state from DB using the user ID we have right now —
         // before setUser()'s async state update propagates to refreshSubscriptionStatus().
         if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
           refreshSubscriptionStatus(session.user.id);
+        }
+        if (event === 'SIGNED_IN') {
+          trackEvent(AnalyticsEvents.LOGIN_COMPLETED, { method: 'email' });
         }
       }
       // If TOKEN_REFRESHED but session is somehow null, do NOT clear user.
@@ -224,6 +230,8 @@ async function sendSignupNotification(userId: string, email: string, signupMetho
     // Notify on new signup
     if (data.user?.id && data.user?.email) {
       await sendSignupNotification(data.user.id, data.user.email, 'email');
+      identifyUser(data.user.id, { email: data.user.email, signup_method: 'email' });
+      trackEvent(AnalyticsEvents.SIGNUP_COMPLETED, { method: 'email' });
     }
   };
 

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/services/supabase';
+import { trackEvent, AnalyticsEvents } from '@/utils/analytics';
 import Header from '@/components/Header';
 import { toast } from 'sonner';
 
@@ -51,15 +52,17 @@ export default function PricingPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, user]);
 
-  const handleSubscribe = async (priceId: string, _planName: string) => {
+  const handleSubscribe = async (priceId: string, planName: string) => {
     if (!user) {
       // Stay on pricing — Header reads ?signup=true and opens the modal,
       // so users keep the plan context while signing up.
+      trackEvent(AnalyticsEvents.UPGRADE_CLICKED, { plan: planName, billing, authenticated: false });
       router.push('/pricing?signup=true');
       return;
     }
 
     setIsLoading(priceId);
+    trackEvent(AnalyticsEvents.UPGRADE_CLICKED, { plan: planName, billing, authenticated: true });
 
     try {
       // Get the current session token for authorization
@@ -97,6 +100,7 @@ export default function PricingPage() {
 
       // Redirect to Stripe Checkout
       if (data.url) {
+        trackEvent(AnalyticsEvents.CHECKOUT_STARTED, { plan: planName, billing, price_id: priceId });
         // In Electron, open in the system browser; on web, navigate directly
         const isElectron = typeof window !== 'undefined' &&
           typeof (window as Window & { electron?: unknown }).electron !== 'undefined';

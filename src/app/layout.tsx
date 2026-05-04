@@ -9,6 +9,7 @@ import { CameraProvider } from "@/context/CameraContext";
 import VideoFeed from "@/components/VideoFeed";
 import GlobalOnboarding from "@/components/GlobalOnboarding";
 import { Toaster } from "sonner";
+import { PostHogProvider } from "@/components/PostHogProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,32 +36,34 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {/* Load MediaPipe Face Mesh from CDN */}
-        {/* Note: Error handling is done in VideoFeed.tsx during initialization */}
-        <Script
-          src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"
-          strategy="beforeInteractive"
-        />
+        <PostHogProvider>
+          {/* Load MediaPipe Face Mesh from CDN */}
+          {/* Note: Error handling is done in VideoFeed.tsx during initialization */}
+          <Script
+            src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"
+            strategy="beforeInteractive"
+          />
 
-        <AuthProvider>
-          <InterviewProvider>
-            <CameraProvider>
-              {/* Persistent Video Background */}
-              <VideoFeed />
-              {/* Page Content */}
-              <div className="relative z-10 w-full h-full">
-                {children}
-              </div>
-              {/* First-time onboarding overlay — mounted globally so it fires
-                  on whichever route a new signup lands on (not just `/`). */}
-              <GlobalOnboarding />
-            </CameraProvider>
-          </InterviewProvider>
-        </AuthProvider>
-        {/* Analytics */}
-        <Analytics />
-        {/* Toast Notifications */}
-        <Toaster position="top-right" richColors />
+          <AuthProvider>
+            <InterviewProvider>
+              <CameraProvider>
+                {/* Persistent Video Background */}
+                <VideoFeed />
+                {/* Page Content */}
+                <div className="relative z-10 w-full h-full">
+                  {children}
+                </div>
+                {/* First-time onboarding overlay — mounted globally so it fires
+                    on whichever route a new signup lands on (not just `/`). */}
+                <GlobalOnboarding />
+              </CameraProvider>
+            </InterviewProvider>
+          </AuthProvider>
+          {/* Analytics */}
+          <Analytics />
+          {/* Toast Notifications */}
+          <Toaster position="top-right" richColors />
+        </PostHogProvider>
       </body>
     </html>
   );

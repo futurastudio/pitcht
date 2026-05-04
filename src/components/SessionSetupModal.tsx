@@ -7,6 +7,7 @@ import { useInterview } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
 import { canUserStartSession } from '@/services/subscriptionManager';
 import { apiFetch } from '@/utils/api';
+import { trackEvent, AnalyticsEvents } from '@/utils/analytics';
 import PaywallModal from './PaywallModal';
 import SignupModal from './SignupModal';
 import LoginModal from './LoginModal';
@@ -99,6 +100,7 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
             setSessionType(sessionType);
             setSessionContext(contextValue.trim());
             setQuestions(data.questions);
+            trackEvent(AnalyticsEvents.SESSION_STARTED, { session_type: sessionType, has_context: !!contextValue.trim() });
             router.push('/interview');
 
         } catch (err) {
@@ -130,6 +132,7 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
                 setShowPaywall(true);
                 setPaywallReason(check.reason || "You've reached your session limit.");
                 setIsGenerating(false);
+                trackEvent(AnalyticsEvents.PAYWALL_SHOWN, { reason: check.reason || 'session_limit' });
                 return;
             }
         }
