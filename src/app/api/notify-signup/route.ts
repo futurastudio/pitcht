@@ -63,7 +63,7 @@ function buildWelcomeEmail(email: string) {
               You now have <strong style="color:#ffffff;">3 free practice sessions</strong>. No credit card. No strings.
             </p>
             <p style="margin:0 0 24px; font-size:16px; line-height:1.6; color:#a1a1a1;">
-              Pitcht is an AI interviewer that records your answers and gives you real feedback on what you actually said — not what you wish you said. Think eye contact, clarity, structure, and how you handle curveball follow-ups.
+              Pitcht is an AI interviewer that records your answers and gives you real feedback on what you actually said — not what you wish you said. Think eye contact, clarity, structure, and how you handle curveball follow-ups. You’ll get real answer frameworks tailored to your role, not generic scripts that sound like everyone else.
             </p>
           </td>
         </tr>
