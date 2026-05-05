@@ -62,7 +62,8 @@ const nextConfig: NextConfig = {
               "default-src 'self'",
               // Allow scripts from self and MediaPipe CDN
               // unsafe-eval and wasm-unsafe-eval are required for MediaPipe WebAssembly
-              "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net blob:",
+              // PostHog loads recorder/surveys from us-assets.i.posthog.com
+              "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'unsafe-inline' https://cdn.jsdelivr.net https://*.posthog.com blob:",
               // Allow styles from self and inline (needed for Tailwind)
               "style-src 'self' 'unsafe-inline'",
               // Allow images from self, data URIs, and Supabase storage
