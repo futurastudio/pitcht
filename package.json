@@ -93,6 +93,7 @@
     "openai": "^6.9.1",
     "pg": "^8.16.3",
     "posthog-js": "^1.372.8",
+    "posthog-node": "^5.33.2",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "recharts": "^3.5.1",

@@ -58,8 +58,16 @@ export const AnalyticsEvents = {
   UPGRADE_CLICKED: 'upgrade_clicked',
   CHECKOUT_STARTED: 'checkout_started',
   CHECKOUT_COMPLETED: 'checkout_completed',
+  CHECKOUT_COMPLETED_PAGE_VIEW: 'checkout_completed_page_view',
   CHECKOUT_CANCELLED: 'checkout_cancelled',
   PAYWALL_SHOWN: 'paywall_shown',
+
+  // Subscription lifecycle (server-side from Stripe webhook)
+  SUBSCRIPTION_CREATED: 'subscription_created',
+  SUBSCRIPTION_UPDATED: 'subscription_updated',
+  SUBSCRIPTION_CANCELLED: 'subscription_cancelled',
+  PAYMENT_FAILED: 'payment_failed',
+  PAYMENT_SUCCEEDED: 'payment_succeeded',
 
   // Navigation
   PAGE_VIEW: 'page_view',

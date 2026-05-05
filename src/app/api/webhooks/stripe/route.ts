@@ -5,6 +5,7 @@ import {
   cancelSubscription,
   updateSubscriptionStatus,
 } from '@/services/subscriptionManager';
+import { trackServerEvent, flushPostHog } from '@/utils/posthog-server';
 
 export const maxDuration = 30;
 
@@ -50,13 +51,9 @@ export async function POST(request: Request) {
         const subscriptionId = session.subscription as string;
         const customerId = session.customer as string;
         const userId = session.client_reference_id;
+        const amountTotal = session.amount_total ? session.amount_total / 100 : undefined;
+        const currency = session.currency;
 
-        // Missing client_reference_id means our checkout creation didn't attach
-        // the Supabase user ID. Stripe retrying this event won't change the
-        // session payload, so 500 would just burn retry budget. Log every piece
-        // of correlating context we have (session id, customer id, email) so
-        // on-call can reconcile the payment to a user manually, then 200 to
-        // stop retries.
         if (!userId) {
           console.error('[STRIPE_WEBHOOK_ALERT] checkout.session.completed missing client_reference_id — cannot auto-provision, manual reconcile required', {
             sessionId: session.id,
@@ -64,27 +61,31 @@ export async function POST(request: Request) {
             subscriptionId,
             customerEmail: session.customer_details?.email ?? null,
           });
+          // Still track the event even if we can't link to a user — use email or customerId
+          trackServerEvent('checkout_completed', customerId || 'unknown', {
+            session_id: session.id,
+            subscription_id: subscriptionId,
+            customer_id: customerId,
+            customer_email: session.customer_details?.email ?? null,
+            amount_total: amountTotal,
+            currency,
+            user_linked: false,
+          });
+          await flushPostHog();
           return NextResponse.json({ received: true, warning: 'missing_user_id' });
         }
 
-        // Verify the Stripe customer exists in the same environment we're
-        // running in. This is a defensive check against test events hitting a
-        // live endpoint (or vice versa). There are two sub-cases:
-        //
-        //   (a) retrieve() throws  — could be transient (network flake) or
-        //       permanent (env mismatch / deleted customer that 404s). Return
-        //       500 so Stripe retries; a transient error will clear on its
-        //       own, and a genuine env mismatch will exhaust retries and
-        //       surface in the Stripe dashboard where we can see + fix it.
-        //       Previously this branch silently returned 200, meaning a
-        //       paying user could lose their subscription with no retry.
-        //
-        //   (b) customer.deleted === true  — the customer object was
-        //       explicitly deleted from Stripe between payment and this
-        //       event firing. Very rare. The payment already succeeded, so
-        //       the user is owed their Pro access. Log loudly for manual
-        //       review and fall through to provisioning. Previously this
-        //       branch silently returned 200, same silent-failure problem.
+        // Track checkout completion BEFORE provisioning (so event fires even if DB fails)
+        trackServerEvent('checkout_completed', userId, {
+          session_id: session.id,
+          subscription_id: subscriptionId,
+          customer_id: customerId,
+          customer_email: session.customer_details?.email ?? null,
+          amount_total: amountTotal,
+          currency,
+          user_linked: true,
+        });
+
         let customerDeleted = false;
         try {
           const customer = await stripe.customers.retrieve(customerId);
@@ -100,24 +101,18 @@ export async function POST(request: Request) {
             console.log(`✅ Verified customer exists: ${customerId}`);
           }
         } catch (customerError: unknown) {
-          console.error('[STRIPE_WEBHOOK_ALERT] stripe.customers.retrieve failed — returning 500 so Stripe retries. Persistent failure usually indicates a test/live environment mismatch.', {
+          console.error('[STRIPE_WEBHOOK_ALERT] stripe.customers.retrieve failed — returning 500 so Stripe retries.', {
             sessionId: session.id,
             customerId,
             error: customerError instanceof Error ? customerError.message : String(customerError),
           });
+          await flushPostHog();
           return NextResponse.json(
             { error: 'Customer verification failed, Stripe will retry' },
             { status: 500 }
           );
         }
 
-        // Get the price ID and billing period from the subscription.
-        // NOTE: In Stripe SDK v20, current_period_start/end moved from the
-        // top-level subscription object to items.data[0] — always read from there.
-        // Any throw below (subscriptions.retrieve, createPremiumSubscription)
-        // bubbles to the outer catch which returns 500, which is the correct
-        // behaviour: Stripe's retry queue handles transient DB/API blips and
-        // createPremiumSubscription is idempotent.
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const priceId = subscription.items.data[0].price.id;
         const item = subscription.items.data[0] as unknown as { current_period_start: number; current_period_end: number };
@@ -133,6 +128,16 @@ export async function POST(request: Request) {
           periodEnd
         );
 
+        // Track subscription creation
+        trackServerEvent('subscription_created', userId, {
+          subscription_id: subscriptionId,
+          customer_id: customerId,
+          price_id: priceId,
+          period_start: periodStart.toISOString(),
+          period_end: periodEnd.toISOString(),
+          customer_deleted_in_stripe: customerDeleted,
+        });
+
         console.log(`✅ Subscription ${customerDeleted ? 'provisioned (customer deleted in Stripe — review)' : 'created'} for user: ${userId}`);
         break;
       }
@@ -141,13 +146,21 @@ export async function POST(request: Request) {
         const subscription = event.data.object as Stripe.Subscription;
         console.log('Subscription updated:', subscription.id);
 
-        // In Stripe SDK v20, current_period_end lives on items.data[0], not the top-level object.
         const updatedItem = subscription.items.data[0] as unknown as { current_period_end: number };
         await updateSubscriptionStatus(
           subscription.id,
           subscription.status as 'active' | 'canceled' | 'past_due' | 'trialing',
           new Date(updatedItem.current_period_end * 1000)
         );
+
+        // Try to get userId from metadata for tracking
+        const userId = subscription.metadata?.userId || subscription.customer as string;
+        trackServerEvent('subscription_updated', userId, {
+          subscription_id: subscription.id,
+          status: subscription.status,
+          current_period_end: new Date(updatedItem.current_period_end * 1000).toISOString(),
+          cancel_at_period_end: subscription.cancel_at_period_end,
+        });
 
         console.log(`✅ Subscription updated: ${subscription.id} → ${subscription.status}`);
         break;
@@ -160,15 +173,23 @@ export async function POST(request: Request) {
         const userId = subscription.metadata?.userId;
         if (userId) {
           await cancelSubscription(userId);
+          trackServerEvent('subscription_cancelled', userId, {
+            subscription_id: subscription.id,
+            cancellation_reason: subscription.cancellation_details?.reason || 'unknown',
+          });
           console.log(`✅ Subscription cancelled for user: ${userId}`);
         } else {
           console.error('No user ID found in subscription metadata');
+          trackServerEvent('subscription_cancelled', subscription.customer as string, {
+            subscription_id: subscription.id,
+            user_id_missing: true,
+          });
         }
         break;
       }
 
       case 'invoice.payment_failed': {
-        const invoice = event.data.object as unknown as { id: string; subscription: string | null; period_end: number };
+        const invoice = event.data.object as unknown as { id: string; subscription: string | null; period_end: number; amount_due: number; currency: string };
         console.log('Payment failed for invoice:', invoice.id);
 
         if (invoice.subscription) {
@@ -177,13 +198,24 @@ export async function POST(request: Request) {
             'past_due',
             new Date(invoice.period_end * 1000)
           );
+
+          // Try to lookup user from subscription metadata
+          const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+          const userId = subscription.metadata?.userId || subscription.customer as string;
+          trackServerEvent('payment_failed', userId, {
+            invoice_id: invoice.id,
+            subscription_id: invoice.subscription,
+            amount_due: invoice.amount_due ? invoice.amount_due / 100 : undefined,
+            currency: invoice.currency,
+          });
+
           console.log(`⚠️ Subscription marked as past_due: ${invoice.subscription}`);
         }
         break;
       }
 
       case 'invoice.payment_succeeded': {
-        const invoice = event.data.object as unknown as { id: string; subscription: string | null; period_end: number };
+        const invoice = event.data.object as unknown as { id: string; subscription: string | null; period_end: number; amount_paid: number; currency: string };
         console.log('Payment succeeded for invoice:', invoice.id);
 
         if (invoice.subscription) {
@@ -192,6 +224,17 @@ export async function POST(request: Request) {
             'active',
             new Date(invoice.period_end * 1000)
           );
+
+          const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+          const userId = subscription.metadata?.userId || subscription.customer as string;
+          trackServerEvent('payment_succeeded', userId, {
+            invoice_id: invoice.id,
+            subscription_id: invoice.subscription,
+            amount_paid: invoice.amount_paid ? invoice.amount_paid / 100 : undefined,
+            currency: invoice.currency,
+            is_renewal: true,
+          });
+
           console.log(`✅ Subscription renewed: ${invoice.subscription}`);
         }
         break;
@@ -201,9 +244,12 @@ export async function POST(request: Request) {
         console.log(`Unhandled event type: ${event.type}`);
     }
 
+    await flushPostHog();
     return NextResponse.json({ received: true });
+
   } catch (error: unknown) {
     console.error('Webhook handler error:', error);
+    await flushPostHog();
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }

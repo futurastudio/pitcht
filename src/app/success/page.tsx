@@ -7,6 +7,7 @@ import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/services/supabase';
 import Header from '@/components/Header';
+import { trackEvent } from '@/utils/analytics';
 
 function SuccessContent() {
   const searchParams = useSearchParams();
@@ -23,35 +24,35 @@ function SuccessContent() {
   }, []);
 
   useEffect(() => {
+    // Track checkout completion on the client side as a backup signal
+    if (sessionId && user) {
+      trackEvent('checkout_completed_page_view', {
+        session_id: sessionId,
+        user_id: user.id,
+        email: user.email,
+      });
+    }
+  }, [sessionId, user]);
+
+  useEffect(() => {
     // Verify subscription as safety net in case webhook is delayed.
-    // Strategy:
-    //   1. Call /api/verify-subscription to ensure the row exists in DB.
-    //   2. Poll refreshSubscriptionStatus until isPremium is true (up to 10 attempts).
-    //   3. Only show error after all attempts are exhausted.
     if (!sessionId || !user) return;
 
     let cancelled = false;
-    // Phase 1: verify the subscription row exists (up to 6 attempts, 3s apart)
     const MAX_VERIFY_ATTEMPTS = 6;
     const VERIFY_RETRY_MS = 3000;
-    // Phase 2: poll AuthContext until isPremium flips (up to 8 attempts, 2s apart)
     const MAX_POLL_ATTEMPTS = 8;
     const POLL_RETRY_MS = 2000;
 
     const pollUntilPremium = (attemptsLeft: number) => {
       if (cancelled) return;
       refreshSubscriptionStatus().then(() => {
-        // subscriptionStatus is read from closure — schedule a re-check via setTimeout
-        // so React has time to update the state before we read it again.
         setTimeout(() => {
           if (cancelled) return;
-          // Re-read from the context ref via a second refresh; if still not premium, retry.
           if (attemptsLeft > 1) {
             pollUntilPremium(attemptsLeft - 1);
           } else {
             setIsVerifying(false);
-            // Don't show error here — the DB row exists, the UI just needs a hard refresh.
-            // The user can navigate away and come back to see Pro status.
           }
         }, POLL_RETRY_MS);
       });
@@ -84,7 +85,6 @@ function SuccessContent() {
 
         if (response.ok) {
           console.log('✅ Subscription verified in DB — polling AuthContext for isPremium');
-          // Subscription row confirmed — now poll until AuthContext reflects isPremium
           pollUntilPremium(MAX_POLL_ATTEMPTS);
         } else {
           console.error(`❌ Verification attempt failed (${attemptsLeft} left):`, data);
