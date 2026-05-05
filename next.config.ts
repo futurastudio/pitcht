@@ -70,7 +70,7 @@ const nextConfig: NextConfig = {
               // Allow fonts from self and data URIs
               "font-src 'self' data:",
               // Allow connections to API endpoints and external services
-              "connect-src 'self' https://*.supabase.co https://api.anthropic.com https://api.openai.com https://api.stripe.com https://cdn.jsdelivr.net http://localhost:5001 wss://*.supabase.co",
+              "connect-src 'self' https://*.supabase.co https://api.anthropic.com https://api.openai.com https://api.stripe.com https://cdn.jsdelivr.net http://localhost:5001 wss://*.supabase.co https://*.posthog.com",
               // Allow media from self and blob (for video recording)
               "media-src 'self' blob: https://*.supabase.co",
               // Allow workers from self and blob
