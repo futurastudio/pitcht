@@ -77,7 +77,7 @@ export default function DiagnosisCallout({ diagnosis, onPracticeClick }: Diagnos
                         onClick={onPracticeClick}
                         className="inline-flex items-center gap-1.5 bg-white text-black text-xs font-semibold px-4 py-2 rounded-lg hover:bg-white/90 transition-colors"
                     >
-                        Practice this now
+                        Run another session
                         <ArrowRight className="w-3.5 h-3.5" strokeWidth={2.5} />
                     </button>
                 )}

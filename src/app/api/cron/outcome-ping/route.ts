@@ -62,6 +62,10 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     );
 
     // Step 4a: Get session IDs already pinged
+    // TODO(scale): This pulls the entire session_outcomes table into memory to
+    // build a dedup Set. Fine at low volume but won't scale past ~5K rows.
+    // Fix when needed: filter by `.gte('email_sent_at', startUTC.toISOString())`
+    // or fetch candidate session IDs first and pass them via `.in('session_id', [...])`.
     const { data: existingOutcomes, error: outcomesError } = await supabase
       .from('session_outcomes')
       .select('session_id');
