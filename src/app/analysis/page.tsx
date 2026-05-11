@@ -9,6 +9,7 @@ import { useInterview, Recording } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
 import TranscriptViewer from '@/components/TranscriptViewer';
 import PaywallModal from '@/components/PaywallModal';
+import DiagnosisCallout from '@/components/DiagnosisCallout';
 import { saveAnalysis, getSessionDetails } from '@/services/sessionManager';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
 import { canUserStartSession } from '@/services/subscriptionManager';
@@ -357,6 +358,7 @@ function AnalysisContent() {
                             strengths: analysis.strengths,
                             improvements: analysis.improvements,
                             nextSteps: analysis.next_steps,
+                            diagnosis: analysis.diagnosis ?? undefined,
                             metrics: {
                                 wordsPerMinute: selectedRecording.wordsPerMinute || 0,
                                 fillerWordCount: selectedRecording.fillerWordCount || 0,
@@ -424,6 +426,7 @@ function AnalysisContent() {
                                 strengths: data.strengths,
                                 improvements: data.improvements,
                                 nextSteps: data.nextSteps,
+                                diagnosis: data.diagnosis,
                             });
                         } catch (analysisError) {
                             console.error('Failed to save analysis to database:', analysisError);
@@ -500,6 +503,7 @@ function AnalysisContent() {
                                 strengths: data.strengths,
                                 improvements: data.improvements,
                                 nextSteps: data.nextSteps,
+                                diagnosis: data.diagnosis,
                             });
                         } catch (analysisError) {
                             console.error('Failed to save analysis to database:', analysisError);
@@ -765,6 +769,17 @@ function AnalysisContent() {
                                         </div>
                                     ) : feedback ? (
                                         <div className="space-y-4">
+                                            {/* Diagnosis Callout — "the one thing to fix" */}
+                                            {process.env.NEXT_PUBLIC_DIAGNOSIS_CALLOUT === 'true' && (
+                                                <DiagnosisCallout
+                                                    diagnosis={feedback.diagnosis}
+                                                    onPracticeClick={() => {
+                                                        repeatSession();
+                                                        router.push('/interview');
+                                                    }}
+                                                />
+                                            )}
+
                                             {/* #31 Biggest Improvement Callout */}
                                             {feedback.contentScore !== undefined &&
                                              feedback.communicationScore !== undefined &&

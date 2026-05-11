@@ -5,6 +5,7 @@
 
 import { supabase, uploadVideo, getVideoUrl as getVideoUrlFromStorage } from './supabase';
 import type { SessionType, Question } from '@/types/interview';
+import type { Diagnosis } from '@/utils/diagnosisTaxonomy';
 
 // Re-export getVideoUrl for convenience
 export { getVideoUrl } from './supabase';
@@ -34,6 +35,7 @@ export interface FeedbackData {
     priority: 'high' | 'medium' | 'low';
   }>;
   nextSteps: string[];
+  diagnosis?: Diagnosis;             // NEW: single-pattern callout (see src/utils/diagnosisTaxonomy.ts)
 }
 
 /**
@@ -199,6 +201,7 @@ export async function saveAnalysis(
       strengths: feedback.strengths,
       improvements: feedback.improvements,
       next_steps: feedback.nextSteps,
+      diagnosis: feedback.diagnosis ?? null,
     });
 
   if (error) {
