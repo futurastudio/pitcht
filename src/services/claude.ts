@@ -5,6 +5,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { SessionType, Question, SessionContext } from '@/types/interview';
+import { Diagnosis, DIAGNOSIS_PROMPT_BLOCK } from '@/utils/diagnosisTaxonomy';
 
 // Initialize Claude client
 const anthropic = new Anthropic({
@@ -273,6 +274,7 @@ export async function generateFeedback(params: {
   strengths: Array<{ area: string; detail: string }>;
   improvements: Array<{ area: string; detail: string; suggestion: string; example?: string; priority: 'high' | 'medium' | 'low' }>;
   nextSteps: string[];
+  diagnosis?: Diagnosis;
 }> {
   const { sessionType, question, transcript, context, analysisData } = params;
 
@@ -348,7 +350,8 @@ Then provide detailed feedback in JSON format:
       "priority": "high" | "medium" | "low"
     }
   ],
-  "nextSteps": ["actionable item 1", "actionable item 2", "actionable item 3"]
+  "nextSteps": ["actionable item 1", "actionable item 2", "actionable item 3"],
+  "diagnosis": { "...optional, see Diagnosis spec below (omit entirely if no pattern applies)..." }
 }
 
 IMPORTANT:
@@ -356,6 +359,8 @@ IMPORTANT:
 - Use [PLACEHOLDERS] like [YOUR COMPANY], [SPECIFIC TECHNOLOGY], [METRIC/RESULT]
 - Add coaching notes after the framework
 - Make examples adaptable to any similar situation
+
+${DIAGNOSIS_PROMPT_BLOCK}
 
 Return ONLY the JSON object, no markdown or code blocks.`;
 

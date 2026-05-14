@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateFeedback } from '@/services/claude';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
 import type { SessionType } from '@/types/interview';
+import type { Diagnosis } from '@/utils/diagnosisTaxonomy';
 import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
 import { createClient } from '@supabase/supabase-js';
 
@@ -49,6 +50,7 @@ export interface GenerateFeedbackResponse {
     priority: 'high' | 'medium' | 'low';
   }>;
   nextSteps: string[];
+  diagnosis?: Diagnosis;
   metrics: {
     wordsPerMinute: number;
     fillerWordCount: number;
