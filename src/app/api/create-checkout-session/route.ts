@@ -47,6 +47,8 @@ export async function POST(request: Request) {
       'https://app.pitcht.us',
       'https://pitchtcom.vercel.app',
       'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
     ];
     const validatedOrigin = ALLOWED_ORIGINS.includes(returnOrigin)
       ? returnOrigin

@@ -188,23 +188,42 @@ export async function saveAnalysis(
 ): Promise<void> {
   console.log(`📊 Saving analysis for recording: ${recordingId}`);
 
+  const analysisRow = {
+    recording_id: recordingId,
+    overall_score: feedback.overallScore,
+    content_score: feedback.contentScore || null,           // NEW
+    communication_score: feedback.communicationScore || null, // NEW
+    delivery_score: feedback.deliveryScore || null,          // NEW
+    summary: feedback.summary,
+    communication_patterns: feedback.communicationPatterns || null, // NEW
+    strengths: feedback.strengths,
+    improvements: feedback.improvements,
+    next_steps: feedback.nextSteps,
+    diagnosis: feedback.diagnosis ?? null,
+  };
+
   const { error } = await supabase
     .from('analyses')
-    .insert({
-      recording_id: recordingId,
-      overall_score: feedback.overallScore,
-      content_score: feedback.contentScore || null,           // NEW
-      communication_score: feedback.communicationScore || null, // NEW
-      delivery_score: feedback.deliveryScore || null,          // NEW
-      summary: feedback.summary,
-      communication_patterns: feedback.communicationPatterns || null, // NEW
-      strengths: feedback.strengths,
-      improvements: feedback.improvements,
-      next_steps: feedback.nextSteps,
-      diagnosis: feedback.diagnosis ?? null,
-    });
+    .insert(analysisRow);
 
   if (error) {
+    // Some environments may not have the optional diagnosis migration applied yet.
+    // Preserve the core analysis save instead of dropping feedback persistence.
+    if (error.code === 'PGRST204' && error.message.includes("'diagnosis' column")) {
+      const { diagnosis: _diagnosis, ...analysisRowWithoutDiagnosis } = analysisRow;
+      const { error: retryError } = await supabase
+        .from('analyses')
+        .insert(analysisRowWithoutDiagnosis);
+
+      if (!retryError) {
+        console.warn('Analysis saved without diagnosis column; run add_diagnosis_to_analyses.sql to persist diagnosis callouts.');
+        return;
+      }
+
+      console.error('Analysis save retry error:', retryError);
+      throw new Error(`Failed to save analysis: ${retryError.message}`);
+    }
+
     console.error('Analysis save error:', error);
     throw new Error(`Failed to save analysis: ${error.message}`);
   }

@@ -8,6 +8,7 @@
     "dev:full": "concurrently \"next dev\" \"tsc -p tsconfig.electron.json --watch\" \"wait-on http://localhost:3000 dist/electron/main.js && cross-env NODE_ENV=development electron .\"",
     "build": "next build",
     "start": "next start",
+    "test": "node --import tsx --test tests/**/*.test.ts",
     "lint": "next lint",
     "electron-build": "tsc -p tsconfig.electron.json && electron-builder",
     "verify-env": "node scripts/verify-env.js",

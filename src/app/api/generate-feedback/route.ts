@@ -14,6 +14,7 @@ import { generateFeedback } from '@/services/claude';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
 import type { SessionType } from '@/types/interview';
 import type { Diagnosis } from '@/utils/diagnosisTaxonomy';
+import { resolveFeedbackMode, type FeedbackMode } from '@/services/feedbackMode';
 import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
 import { createClient } from '@supabase/supabase-js';
 
@@ -27,6 +28,7 @@ export interface GenerateFeedbackRequest {
   eyeContactPercentage?: number;
   dominantEmotion?: string;
   presenceScore?: number;
+  feedbackMode?: FeedbackMode;
 }
 
 export interface GenerateFeedbackResponse {
@@ -51,6 +53,7 @@ export interface GenerateFeedbackResponse {
   }>;
   nextSteps: string[];
   diagnosis?: Diagnosis;
+  feedbackMode: FeedbackMode;
   metrics: {
     wordsPerMinute: number;
     fillerWordCount: number;
@@ -122,6 +125,7 @@ export async function POST(request: NextRequest) {
 
     // Analyze speech metrics
     const speechMetrics = analyzeSpeech(body.transcript, body.duration);
+    const feedbackMode = resolveFeedbackMode(body.feedbackMode, process.env);
 
     // Generate AI feedback using Claude (with video metrics if available)
     const feedback = await generateFeedback({
@@ -137,11 +141,13 @@ export async function POST(request: NextRequest) {
         dominantEmotion: body.dominantEmotion,
         presenceScore: body.presenceScore,
       },
+      feedbackMode,
     });
 
     // Prepare response
     const response: GenerateFeedbackResponse = {
       ...feedback,
+      feedbackMode,
       metrics: {
         wordsPerMinute: speechMetrics.wordsPerMinute,
         fillerWordCount: speechMetrics.fillerWordCount,

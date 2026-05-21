@@ -80,7 +80,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     // Step 4b: Get candidate sessions completed 3 days ago
     const { data: sessions, error: sessionsError } = await supabase
       .from('sessions')
-      .select('id, user_id, type, created_at')
+      .select('id, user_id, session_type, created_at')
       .eq('status', 'completed')
       .gte('created_at', startUTC.toISOString())
       .lte('created_at', endUTC.toISOString());
@@ -137,9 +137,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           'presentation',
         ];
         const sessionType: SendOutcomeEmailParams['sessionType'] = allowedTypes.includes(
-          session.type as SendOutcomeEmailParams['sessionType']
+          session.session_type as SendOutcomeEmailParams['sessionType']
         )
-          ? (session.type as SendOutcomeEmailParams['sessionType'])
+          ? (session.session_type as SendOutcomeEmailParams['sessionType'])
           : 'job-interview'; // safe fallback
 
         // Send the outcome email

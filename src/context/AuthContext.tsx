@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/services/supabase';
 import { convertAnonymousToRealAccount } from '@/services/auth';
-import { TRIAL_SESSION_LIMIT } from '@/services/subscriptionManager';
+import { TRIAL_SESSION_LIMIT, getFreeTierUsageStatus } from '@/services/subscriptionManager';
 import { identifyUser, trackEvent, AnalyticsEvents } from '@/utils/analytics';
 import type { User } from '@supabase/supabase-js';
 
@@ -131,24 +131,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Check free trial usage: only count completed sessions, so an abandoned
-      // or in-progress session does not consume the trial (no permanent lockout
-      // from a refresh or crash). Trial status comes exclusively from the
-      // subscriptions table (managed by Stripe webhooks).
-      const { count } = await supabase
-        .from('sessions')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', uid)
-        .eq('status', 'completed');
-
-      const sessionsTotal = count || 0;
+      // Check free trial usage via the same helper used by the server-side
+      // session gate. This keeps AuthContext's UI state and canUserStartSession()
+      // in lockstep.
+      const freeTierUsage = await getFreeTierUsageStatus(uid);
 
       setSubscriptionStatus({
         isPremium: false,
         isTrialing: false,
         trialEndsAt: null,
-        sessionsThisMonth: sessionsTotal,
-        canStartSession: sessionsTotal < TRIAL_SESSION_LIMIT,
+        sessionsThisMonth: freeTierUsage.completedSessions,
+        canStartSession: freeTierUsage.canStartSession,
       });
     } catch (error) {
       console.error('Error fetching subscription status:', error);

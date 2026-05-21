@@ -14,6 +14,7 @@ import { saveAnalysis, getSessionDetails } from '@/services/sessionManager';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
 import { canUserStartSession } from '@/services/subscriptionManager';
 import type { GenerateFeedbackResponse } from '@/app/api/generate-feedback/route';
+import { getRequestedFeedbackMode } from '@/services/feedbackMode';
 
 // Map a DB recording row (snake_case) onto the client Recording shape.
 // Used when hydrating /analysis directly from ?sessionId= (post-interview, refresh, deep link).
@@ -38,14 +39,20 @@ type DbRecordingRow = {
 
 type DbQuestionRow = {
     id: string;
+    question_text?: string | null;
     text?: string | null;
     order_index?: number | null;
+};
+
+type DbSessionMeta = {
+    session_type?: string | null;
+    context?: string | null;
 };
 
 function dbRowToRecording(row: DbRecordingRow, question?: DbQuestionRow): Recording {
     return {
         questionId: row.question_id || question?.id || '',
-        questionText: question?.text || '',
+        questionText: question?.question_text || question?.text || '',
         videoPath: row.video_path || '',
         videoUrl: row.video_url || undefined,
         recordingId: row.id,
@@ -88,6 +95,7 @@ function AnalysisContent() {
 
     // DB hydration (post-interview navigation, refresh, deep link with ?sessionId=)
     const [hydratedRecordings, setHydratedRecordings] = useState<Recording[] | null>(null);
+    const [hydratedSessionMeta, setHydratedSessionMeta] = useState<DbSessionMeta | null>(null);
     const [isHydrating, setIsHydrating] = useState<boolean>(Boolean(sessionIdParam));
     const [hydrateError, setHydrateError] = useState<string | null>(null);
 
@@ -114,6 +122,8 @@ function AnalysisContent() {
         [hydratedRecordings, contextRecordings]
     );
     const hasRecordings = recordings.length > 0;
+    const effectiveSessionType = hydratedSessionMeta?.session_type || sessionType || 'job-interview';
+    const effectiveSessionContext = hydratedSessionMeta?.context ?? sessionContext ?? '';
 
     // Hydrate the full session (questions + recordings + analyses) from Supabase
     useEffect(() => {
@@ -140,6 +150,10 @@ function AnalysisContent() {
                     return;
                 }
                 const questions: DbQuestionRow[] = (data?.questions as DbQuestionRow[]) || [];
+                setHydratedSessionMeta({
+                    session_type: data?.session_type ?? null,
+                    context: data?.context ?? null,
+                });
                 const questionMap = new Map<string, DbQuestionRow>(questions.map(q => [q.id, q]));
                 const rows: DbRecordingRow[] = ((data?.recordings as DbRecordingRow[]) || []).slice().sort((a, b) => {
                     const qa = questionMap.get(a.question_id || '');
@@ -152,6 +166,7 @@ function AnalysisContent() {
                 console.error('Failed to hydrate session from DB:', err);
                 if (!cancelled) {
                     setHydrateError('Could not load this session.');
+                    setHydratedSessionMeta(null);
                     setHydratedRecordings([]);
                 }
             } finally {
@@ -359,6 +374,7 @@ function AnalysisContent() {
                             improvements: analysis.improvements,
                             nextSteps: analysis.next_steps,
                             diagnosis: analysis.diagnosis ?? undefined,
+                            feedbackMode: 'coaching',
                             metrics: {
                                 wordsPerMinute: selectedRecording.wordsPerMinute || 0,
                                 fillerWordCount: selectedRecording.fillerWordCount || 0,
@@ -396,15 +412,17 @@ function AnalysisContent() {
                         ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
                     },
                     body: JSON.stringify({
-                        sessionType: sessionType || 'job-interview',
+                        sessionType: effectiveSessionType,
+                        questionId: selectedRecording.questionId,
                         questionText: selectedRecording.questionText,
                         transcript: selectedRecording.transcript,
-                        context: sessionContext || '', // ✅ FIXED: Pass job description for personalized examples
+                        context: effectiveSessionContext, // Pass DB session context for deep links/refreshes, fallback to React context otherwise
                         duration: selectedRecording.duration,
                         // Sprint 5A: Include video metrics
                         eyeContactPercentage: selectedRecording.eyeContactPercentage,
                         dominantEmotion: selectedRecording.dominantEmotion,
                         presenceScore: selectedRecording.presenceScore,
+                        feedbackMode: getRequestedFeedbackMode(),
                     }),
                 });
 
@@ -453,7 +471,7 @@ function AnalysisContent() {
         };
 
         loadOrGenerateFeedback();
-    }, [selectedRecording, sessionType, sessionContext]);
+    }, [selectedRecording, effectiveSessionType, effectiveSessionContext]);
 
     // Retry function for failed feedback generation
     const retryFeedbackGeneration = () => {
@@ -469,20 +487,26 @@ function AnalysisContent() {
             setIsGeneratingFeedback(true);
 
             try {
+                const { supabase: supabaseClient } = await import('@/services/supabase');
+                const { data: { session } } = await supabaseClient.auth.getSession();
+
                 const response = await apiFetch('/api/generate-feedback', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
                     },
                     body: JSON.stringify({
-                        sessionType: sessionType || 'job-interview',
+                        sessionType: effectiveSessionType,
+                        questionId: selectedRecording.questionId,
                         questionText: selectedRecording.questionText,
                         transcript: selectedRecording.transcript,
-                        context: sessionContext || '',
+                        context: effectiveSessionContext,
                         duration: selectedRecording.duration,
                         eyeContactPercentage: selectedRecording.eyeContactPercentage,
                         dominantEmotion: selectedRecording.dominantEmotion,
                         presenceScore: selectedRecording.presenceScore,
+                        feedbackMode: getRequestedFeedbackMode(),
                     }),
                 });
 

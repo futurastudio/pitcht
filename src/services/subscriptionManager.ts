@@ -21,6 +21,37 @@ export interface SubscriptionCheckResult {
   sessionsRemaining: number;
 }
 
+export interface FreeTierUsageStatus {
+  completedSessions: number;
+  sessionsRemaining: number;
+  canStartSession: boolean;
+}
+
+/**
+ * Free-tier gating counts completed sessions only. Abandoned/in-progress
+ * sessions do not consume the trial, so refreshes and crashes cannot
+ * permanently lock someone out.
+ */
+export async function getFreeTierUsageStatus(userId: string): Promise<FreeTierUsageStatus> {
+  const { count, error } = await supabase
+    .from('sessions')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('status', 'completed');
+
+  if (error) {
+    throw error;
+  }
+
+  const completedSessions = count || 0;
+
+  return {
+    completedSessions,
+    sessionsRemaining: Math.max(TRIAL_SESSION_LIMIT - completedSessions, 0),
+    canStartSession: completedSessions < TRIAL_SESSION_LIMIT,
+  };
+}
+
 /**
  * Check if user can start a new session
  * Enforces: TRIAL_SESSION_LIMIT lifetime sessions for free tier, unlimited for trial/premium
@@ -66,25 +97,16 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       };
     }
 
-    // Free trial: 1 completed session lifetime.
-    // Only count completed sessions — an abandoned/in-progress session does not
-    // consume the trial so users aren't permanently locked out by a refresh or crash.
-    const { count } = await supabase
-      .from('sessions')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('status', 'completed');
+    const freeTierUsage = await getFreeTierUsageStatus(userId);
 
-    const sessionsThisMonth = count || 0;
-
-    if (sessionsThisMonth >= TRIAL_SESSION_LIMIT) {
+    if (!freeTierUsage.canStartSession) {
       return {
         allowed: false,
-        reason: `Your free trial session has been used. Upgrade to Pro for unlimited practice.`,
+        reason: `You've used all ${TRIAL_SESSION_LIMIT} free sessions. Upgrade to Pro for unlimited practice.`,
         isPremium: false,
         isTrialing: false,
         trialEndsAt: null,
-        sessionsThisMonth,
+        sessionsThisMonth: freeTierUsage.completedSessions,
         sessionsRemaining: 0,
       };
     }
@@ -94,8 +116,8 @@ export async function canUserStartSession(userId: string): Promise<SubscriptionC
       isPremium: false,
       isTrialing: false,
       trialEndsAt: null,
-      sessionsThisMonth,
-      sessionsRemaining: TRIAL_SESSION_LIMIT - sessionsThisMonth,
+      sessionsThisMonth: freeTierUsage.completedSessions,
+      sessionsRemaining: freeTierUsage.sessionsRemaining,
     };
   } catch (error) {
     console.error('Error checking session limit:', error);

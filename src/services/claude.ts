@@ -6,6 +6,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { SessionType, Question, SessionContext } from '@/types/interview';
 import { Diagnosis, DIAGNOSIS_PROMPT_BLOCK } from '@/utils/diagnosisTaxonomy';
+import { FeedbackMode, getFeedbackModeConfig } from '@/services/feedbackMode';
 
 // Initialize Claude client
 const anthropic = new Anthropic({
@@ -259,6 +260,7 @@ export async function generateFeedback(params: {
     dominantEmotion?: string;
     presenceScore?: number; // Sprint 4: Combined video presence score
   };
+  feedbackMode?: FeedbackMode;
 }): Promise<{
   overallScore: number;
   contentScore?: number;
@@ -276,7 +278,8 @@ export async function generateFeedback(params: {
   nextSteps: string[];
   diagnosis?: Diagnosis;
 }> {
-  const { sessionType, question, transcript, context, analysisData } = params;
+  const { sessionType, question, transcript, context, analysisData, feedbackMode = 'coaching' } = params;
+  const feedbackModeConfig = getFeedbackModeConfig(feedbackMode);
 
   const systemPrompt = `You are an expert interview coach AND communication specialist.
 
@@ -298,7 +301,9 @@ For framework-based examples:
 - Include coaching notes on what to include
 - Make it adaptable to any similar situation
 
-Provide specific, actionable feedback with FRAMEWORK EXAMPLES (not scripts).`;
+Provide specific, actionable feedback with FRAMEWORK EXAMPLES (not scripts).
+
+${feedbackModeConfig.systemPromptAddition}`;
 
 
   const userPrompt = `
@@ -359,6 +364,8 @@ IMPORTANT:
 - Use [PLACEHOLDERS] like [YOUR COMPANY], [SPECIFIC TECHNOLOGY], [METRIC/RESULT]
 - Add coaching notes after the framework
 - Make examples adaptable to any similar situation
+
+${feedbackModeConfig.responseInstructionAddition}
 
 ${DIAGNOSIS_PROMPT_BLOCK}
 
