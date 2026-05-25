@@ -14,12 +14,12 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -32,29 +32,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Mac arm64 DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mac-arm64
           path: release/*-arm64.dmg
 
       - name: Upload Mac x64 DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mac-x64
-          path: release/Pitcht-*.dmg
-          exclude: release/*-arm64.dmg
+          path: |
+            release/Pitcht-*.dmg
+            !release/*-arm64.dmg
 
   build-windows:
     name: Build Windows
     runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -67,7 +68,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Windows installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows
           path: release/*.exe
@@ -78,25 +79,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Download Mac arm64
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: mac-arm64
           path: artifacts/
 
       - name: Download Mac x64
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: mac-x64
           path: artifacts/
 
       - name: Download Windows
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: windows
           path: artifacts/
 
       - name: Create Release and upload files
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: Pitcht ${{ github.ref_name }}
           token: ${{ secrets.GITHUB_TOKEN }}
