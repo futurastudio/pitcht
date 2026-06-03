@@ -8,6 +8,8 @@ import { useCameraStatus } from '@/context/CameraContext';
 import { trackEvent, AnalyticsEvents } from '@/utils/analytics';
 
 type Browser = 'chrome' | 'safari' | 'firefox' | 'other';
+type PermissionPromptTrigger = 'initial' | 'retry';
+type MediaPermissionName = 'camera' | 'microphone';
 
 function detectBrowser(): Browser {
     if (typeof navigator === 'undefined') return 'other';
@@ -17,6 +19,29 @@ function detectBrowser(): Browser {
     if (/Version\/[\d.]+ .*Safari/i.test(ua) && !/Chrome/i.test(ua)) return 'safari';
     if (/Chrome\/[\d.]+/i.test(ua)) return 'chrome';
     return 'other';
+}
+
+async function getPermissionState(name: MediaPermissionName): Promise<PermissionState | 'unsupported' | 'unknown'> {
+    if (typeof navigator === 'undefined' || !navigator.permissions?.query) return 'unsupported';
+
+    try {
+        const status = await navigator.permissions.query({ name: name as PermissionName });
+        return status.state;
+    } catch {
+        return 'unknown';
+    }
+}
+
+async function getMediaPermissionStates() {
+    const [cameraPermissionState, microphonePermissionState] = await Promise.all([
+        getPermissionState('camera'),
+        getPermissionState('microphone'),
+    ]);
+
+    return {
+        camera_permission_state: cameraPermissionState,
+        microphone_permission_state: microphonePermissionState,
+    };
 }
 
 // ─── Permission Recovery Card ────────────────────────────────────────────────
@@ -33,8 +58,8 @@ function PermissionCard({ browser, onRetry, onSkip, isRetrying }: PermissionCard
         chrome: {
             steps: [
                 'Click the camera icon in your browser\'s address bar',
-                'Select "Always allow" for both camera and microphone',
-                'Click "Try Again" below — no refresh needed',
+                'Set camera and microphone to "Always allow"',
+                'Then click "Try Again" below',
             ],
         },
         safari: {
@@ -84,7 +109,7 @@ function PermissionCard({ browser, onRetry, onSkip, isRetrying }: PermissionCard
                     Camera access required
                 </h2>
                 <p className="text-white/60 text-sm text-center mb-6 leading-relaxed">
-                    Pitcht needs your camera and microphone to record your answers and generate AI feedback.
+                    Pitcht needs your camera and microphone to record your answers and generate AI feedback. If access is blocked, update your browser permission first, then retry.
                 </p>
 
                 {/* Try Again */}
@@ -168,6 +193,15 @@ export default function VideoFeed() {
         typeof window !== 'undefined' ? detectBrowser() : 'other'
     );
 
+    const getAnalyticsBaseProps = useCallback(async () => ({
+        browser: browser,
+        pathname: pathname,
+        path: pathname,
+        current_url: typeof window !== 'undefined' ? window.location.href : undefined,
+        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+        ...(await getMediaPermissionStates()),
+    }), [browser, pathname]);
+
     // ── Face tracker setup ──────────────────────────────────────────────────
     useEffect(() => {
         if (videoRef.current && !isTrackerReady && cameraStatus === 'ready') {
@@ -200,17 +234,8 @@ export default function VideoFeed() {
         }
     }, [isCurrentlyRecording, isTrackerReady, tracker]);
 
-    // ── Camera permission analytics ─────────────────────────────────────────
-    useEffect(() => {
-        if (cameraStatus === 'ready') {
-            trackEvent(AnalyticsEvents.RECORDING_PERMISSION_GRANTED);
-        } else if (cameraStatus === 'denied') {
-            trackEvent(AnalyticsEvents.RECORDING_PERMISSION_DENIED);
-        }
-    }, [cameraStatus]);
-
     // ── Camera acquisition (also called on retry) ───────────────────────────
-    const setupCamera = useCallback(async () => {
+    const setupCamera = useCallback(async (trigger: PermissionPromptTrigger = 'initial') => {
         // Stop any existing stream before requesting a new one
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(t => t.stop());
@@ -262,6 +287,10 @@ export default function VideoFeed() {
             audioRecorderRef.current = audioRecorder;
 
             setCameraStatus('ready');
+            trackEvent(AnalyticsEvents.RECORDING_PERMISSION_GRANTED, {
+                ...(await getAnalyticsBaseProps()),
+                permission_prompt_trigger: trigger,
+            });
 
             // ── Pre-flush MediaRecorder encoders ────────────────────────────
             //
@@ -309,13 +338,28 @@ export default function VideoFeed() {
             }
         } catch (err) {
             console.error('Camera access denied:', err);
+            const permissionError = err instanceof Error ? err : null;
+            trackEvent(AnalyticsEvents.RECORDING_PERMISSION_DENIED, {
+                ...(await getAnalyticsBaseProps()),
+                permission_prompt_trigger: trigger,
+                permission_error_name: permissionError?.name ?? 'UnknownError',
+                permission_error_message: permissionError?.message ?? String(err),
+            });
             setCameraStatus('denied');
         } finally {
             setIsRetrying(false);
         }
-    // setCameraStatus from useState is stable — safe with empty deps
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [setCameraStatus]);
+    }, [getAnalyticsBaseProps, setCameraStatus]);
+
+    const handlePermissionRetry = useCallback(async () => {
+        trackEvent(AnalyticsEvents.RECORDING_PERMISSION_RETRY_CLICKED, await getAnalyticsBaseProps());
+        await setupCamera('retry');
+    }, [getAnalyticsBaseProps, setupCamera]);
+
+    const handlePermissionSkip = useCallback(async () => {
+        trackEvent(AnalyticsEvents.RECORDING_PERMISSION_SKIPPED, await getAnalyticsBaseProps());
+        setCameraStatus('skipped');
+    }, [getAnalyticsBaseProps, setCameraStatus]);
 
     // ── Window API + initial camera setup ──────────────────────────────────
     useEffect(() => {
@@ -443,8 +487,8 @@ export default function VideoFeed() {
             {(cameraStatus === 'denied' || isRetrying) && pathname === '/interview' && (
                 <PermissionCard
                     browser={browser}
-                    onRetry={setupCamera}
-                    onSkip={() => setCameraStatus('skipped')}
+                    onRetry={handlePermissionRetry}
+                    onSkip={handlePermissionSkip}
                     isRetrying={isRetrying}
                 />
             )}

@@ -6,7 +6,6 @@ import { Analytics } from "@vercel/analytics/next";
 import { AuthProvider } from "@/context/AuthContext";
 import { InterviewProvider } from "@/context/InterviewContext";
 import { CameraProvider } from "@/context/CameraContext";
-import VideoFeed from "@/components/VideoFeed";
 import GlobalOnboarding from "@/components/GlobalOnboarding";
 import { Toaster } from "sonner";
 import { PostHogProvider } from "@/components/PostHogProvider";
@@ -47,8 +46,6 @@ export default function RootLayout({
           <AuthProvider>
             <InterviewProvider>
               <CameraProvider>
-                {/* Persistent Video Background */}
-                <VideoFeed />
                 {/* Page Content */}
                 <div className="relative z-10 w-full h-full">
                   {children}

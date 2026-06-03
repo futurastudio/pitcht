@@ -53,6 +53,8 @@ export const AnalyticsEvents = {
   QUESTION_ANSWERED: 'question_answered',
   RECORDING_PERMISSION_GRANTED: 'recording_permission_granted',
   RECORDING_PERMISSION_DENIED: 'recording_permission_denied',
+  RECORDING_PERMISSION_RETRY_CLICKED: 'recording_permission_retry_clicked',
+  RECORDING_PERMISSION_SKIPPED: 'recording_permission_skipped',
 
   // Upgrade / Pricing
   UPGRADE_CLICKED: 'upgrade_clicked',

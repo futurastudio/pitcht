@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Prompter from '@/components/Prompter';
 import Controls from '@/components/Controls';
 import ContextModal from '@/components/ContextModal';
+import VideoFeed from '@/components/VideoFeed';
 import { useInterview } from '@/context/InterviewContext';
 import { useAuth } from '@/context/AuthContext';
 import { useCameraStatus } from '@/context/CameraContext';
@@ -694,6 +695,8 @@ export default function InterviewPage() {
 
     return (
         <main className="relative w-full h-full min-h-screen overflow-hidden">
+            <VideoFeed />
+
             {/* Countdown Overlay */}
             {countdown !== null && (
                 <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
