@@ -38,14 +38,15 @@ type DbRecordingRow = {
 
 type DbQuestionRow = {
     id: string;
-    text?: string | null;
-    order_index?: number | null;
+    // DB columns are question_text / position (see sessionManager.ts insert).
+    question_text?: string | null;
+    position?: number | null;
 };
 
 function dbRowToRecording(row: DbRecordingRow, question?: DbQuestionRow): Recording {
     return {
         questionId: row.question_id || question?.id || '',
-        questionText: question?.text || '',
+        questionText: question?.question_text || '',
         videoPath: row.video_path || '',
         videoUrl: row.video_url || undefined,
         recordingId: row.id,
@@ -144,7 +145,7 @@ function AnalysisContent() {
                 const rows: DbRecordingRow[] = ((data?.recordings as DbRecordingRow[]) || []).slice().sort((a, b) => {
                     const qa = questionMap.get(a.question_id || '');
                     const qb = questionMap.get(b.question_id || '');
-                    return (qa?.order_index ?? 0) - (qb?.order_index ?? 0);
+                    return (qa?.position ?? 0) - (qb?.position ?? 0);
                 });
                 const mapped: Recording[] = rows.map(r => dbRowToRecording(r, questionMap.get(r.question_id || '')));
                 setHydratedRecordings(mapped);
@@ -213,7 +214,7 @@ function AnalysisContent() {
                 const rows: DbRecordingRow[] = ((data?.recordings as DbRecordingRow[]) || []).slice().sort((a, b) => {
                     const qa = questionMap.get(a.question_id || '');
                     const qb = questionMap.get(b.question_id || '');
-                    return (qa?.order_index ?? 0) - (qb?.order_index ?? 0);
+                    return (qa?.position ?? 0) - (qb?.position ?? 0);
                 });
                 const mapped: Recording[] = rows.map(r => dbRowToRecording(r, questionMap.get(r.question_id || '')));
                 setHydratedRecordings(mapped);

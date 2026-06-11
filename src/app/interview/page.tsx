@@ -560,6 +560,13 @@ export default function InterviewPage() {
                             duration: 7000,
                         });
                     }).finally(() => {
+                        // Always clear the transcribing indicator, regardless of
+                        // outcome. The .then() above can early-return on an empty
+                        // transcript WITHOUT throwing (so .catch never fires),
+                        // which previously left the "Transcribing…" badge stuck
+                        // for the rest of the session. finally is the only path
+                        // hit by every outcome (success, empty, error, throw).
+                        setIsTranscribing(false);
                         // Decrement the in-flight counter regardless of outcome.
                         // Both the unload guard and the final-question drain rely
                         // on this hitting zero when the pipeline is fully done.

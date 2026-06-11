@@ -1,0 +1,46 @@
+name: CI
+
+# Fast, secret-free quality gate that runs BEFORE code merges to main.
+# Previously nothing ran lint/typecheck/tests on push or PR — broken code only
+# got caught after it had already deployed to production via Vercel.
+#
+# Scope note: we intentionally do NOT run `next build` here. Many API routes
+# read `process.env.X!` at module scope (e.g. new Stripe(...)), so a build
+# without real secrets crashes. Vercel already builds every PR as a preview
+# deployment with the real environment, so that build gate exists separately.
+# This workflow covers the checks that need no secrets: types, lint, unit tests.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Typecheck, Lint, Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test

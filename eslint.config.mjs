@@ -12,8 +12,17 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "dist/**",
-    "test-electron.js",
     "next-env.d.ts",
+    // Non-Next-app code: the next/core-web-vitals + typescript rules target the
+    // app source. Electron (CommonJS main/preload), build output, Node utility
+    // scripts, desktop release artifacts, and the dormant Python service are
+    // not part of the web bundle and legitimately use require() / different
+    // conventions, so linting them with the app config only produces noise.
+    "electron/**",
+    "electron-dist/**",
+    "release/**",
+    "scripts/**",
+    "python-services/**",
   ]),
 ]);
 
