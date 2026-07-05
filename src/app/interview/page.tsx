@@ -363,8 +363,22 @@ export default function InterviewPage() {
 
             const feedback = await response.json();
 
-            // Save to analyses table
+            // Save to analyses table. Idempotency guard (audit finding N3): the
+            // analysis page can independently generate+save for the same
+            // recording, so skip if a row already exists and tolerate a
+            // concurrent-writer unique violation (23505) once the unique index
+            // is applied in prod (scripts/audit-fix-analyses-dedup.sql).
             const { supabase } = await import('@/services/supabase');
+            const { data: existing } = await supabase
+                .from('analyses')
+                .select('id')
+                .eq('recording_id', recordingId)
+                .limit(1);
+
+            if (existing && existing.length > 0) {
+                return;
+            }
+
             const { error } = await supabase
                 .from('analyses')
                 .insert({
@@ -380,7 +394,7 @@ export default function InterviewPage() {
                     next_steps: feedback.nextSteps,
                 });
 
-            if (error) {
+            if (error && error.code !== '23505') {
                 console.error('Failed to save feedback to database:', error);
                 throw error;
             }

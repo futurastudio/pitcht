@@ -188,6 +188,22 @@ export async function saveAnalysis(
 ): Promise<void> {
   console.log(`📊 Saving analysis for recording: ${recordingId}`);
 
+  // Idempotency guard (audit finding N3). Two writers can race to insert an
+  // analysis for the same recording: the interview page generates feedback in
+  // the background while the analysis page independently generates+saves if it
+  // sees no row yet. Without a unique constraint this produced duplicate rows
+  // and double Claude spend. Short-circuit if a row already exists.
+  const { data: existing } = await supabase
+    .from('analyses')
+    .select('id')
+    .eq('recording_id', recordingId)
+    .limit(1);
+
+  if (existing && existing.length > 0) {
+    console.log(`↩︎ Analysis already exists for ${recordingId} — skipping duplicate save`);
+    return;
+  }
+
   const { error } = await supabase
     .from('analyses')
     .insert({
@@ -204,7 +220,11 @@ export async function saveAnalysis(
       diagnosis: feedback.diagnosis ?? null,
     });
 
-  if (error) {
+  // Once the unique index on analyses(recording_id) is applied in prod
+  // (scripts/audit-fix-analyses-dedup.sql), a concurrent writer that wins the
+  // race makes this insert fail with a unique violation (23505). That's the
+  // desired outcome — the row exists — so treat it as success, not an error.
+  if (error && error.code !== '23505') {
     console.error('Analysis save error:', error);
     throw new Error(`Failed to save analysis: ${error.message}`);
   }

@@ -69,6 +69,7 @@ export async function POST(request: NextRequest) {
                 completed_at: new Date().toISOString(),
             })
             .eq('id', sessionId)
+            .eq('user_id', user.id)        // Ownership check: never complete another user's session (IDOR fix)
             .eq('status', 'in_progress'); // Only update if still in_progress
 
         if (error) {

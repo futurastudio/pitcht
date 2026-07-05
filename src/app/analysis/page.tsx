@@ -97,6 +97,7 @@ function AnalysisContent() {
     const [feedback, setFeedback] = useState<GenerateFeedbackResponse | null>(null);
     const [isGeneratingFeedback, setIsGeneratingFeedback] = useState(false);
     const [feedbackError, setFeedbackError] = useState<string | null>(null);
+    const [feedbackRetryNonce, setFeedbackRetryNonce] = useState(0);
     const [openExamples, setOpenExamples] = useState<Record<number, boolean>>({});
     const [isRetryingTranscription, setIsRetryingTranscription] = useState(false);
     const [retryError, setRetryError] = useState<string | null>(null);
@@ -454,79 +455,16 @@ function AnalysisContent() {
         };
 
         loadOrGenerateFeedback();
-    }, [selectedRecording, sessionType, sessionContext]);
+    }, [selectedRecording, sessionType, sessionContext, feedbackRetryNonce]);
 
-    // Retry function for failed feedback generation
+    // Retry failed feedback generation by re-running the effect above. Bumping
+    // the nonce is the single source of truth for the generate/save pipeline —
+    // this avoids a second, drifting copy of that logic (the old copy had gone
+    // stale and dropped the Authorization header, so every retry 401'd — audit
+    // finding N1/N4).
     const retryFeedbackGeneration = () => {
         setFeedbackError(null);
-        setIsGeneratingFeedback(true);
-
-        // Trigger re-generation by updating a dependency
-        // We'll use a timestamp to force the useEffect to run again
-        const generateFeedbackForRecording = async () => {
-            if (!selectedRecording?.transcript) return;
-
-            setFeedbackError(null);
-            setIsGeneratingFeedback(true);
-
-            try {
-                const response = await apiFetch('/api/generate-feedback', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        sessionType: sessionType || 'job-interview',
-                        questionText: selectedRecording.questionText,
-                        transcript: selectedRecording.transcript,
-                        context: sessionContext || '',
-                        duration: selectedRecording.duration,
-                        eyeContactPercentage: selectedRecording.eyeContactPercentage,
-                        dominantEmotion: selectedRecording.dominantEmotion,
-                        presenceScore: selectedRecording.presenceScore,
-                    }),
-                });
-
-                if (response.ok) {
-                    const data: GenerateFeedbackResponse = await response.json();
-                    setFeedback(data);
-                    setFeedbackError(null);
-
-                    if (selectedRecording.recordingId) {
-                        try {
-                            await saveAnalysis(selectedRecording.recordingId, {
-                                overallScore: data.overallScore,
-                                contentScore: data.contentScore,
-                                communicationScore: data.communicationScore,
-                                deliveryScore: data.deliveryScore,
-                                summary: data.summary,
-                                communicationPatterns: data.communicationPatterns,
-                                strengths: data.strengths,
-                                improvements: data.improvements,
-                                nextSteps: data.nextSteps,
-                                diagnosis: data.diagnosis,
-                            });
-                        } catch (analysisError) {
-                            console.error('Failed to save analysis to database:', analysisError);
-                        }
-                    }
-                } else {
-                    const errorData = await response.json().catch(() => ({}));
-                    const errorMessage = errorData.error || 'Failed to generate feedback. Please try again.';
-                    setFeedback(null);
-                    setFeedbackError(errorMessage);
-                }
-            } catch (error) {
-                console.error('Error generating feedback:', error);
-                const errorMessage = error instanceof Error ? error.message : 'Network error. Please check your connection and try again.';
-                setFeedback(null);
-                setFeedbackError(errorMessage);
-            } finally {
-                setIsGeneratingFeedback(false);
-            }
-        };
-
-        generateFeedbackForRecording();
+        setFeedbackRetryNonce((n) => n + 1);
     };
 
     // Retry transcription for a recording that failed to transcribe
