@@ -367,8 +367,11 @@ Return ONLY the JSON object, no markdown or code blocks.`;
   try {
     const message = await retryWithBackoff(async () => {
       return await anthropic.messages.create({
-        model: 'claude-sonnet-4-5-20250929', // Latest Sonnet 4.5 (Sept 2025) - best for nuanced feedback analysis
-        max_tokens: 4096, // Increased for Claude 4.x (more verbose than 3.5 Sonnet, needs more tokens for complete JSON)
+        model: 'claude-sonnet-4-6', // Sonnet 4.6 — same price as 4.5, better nuanced feedback analysis
+        max_tokens: 4096, // Complete JSON coaching payload
+        // Keep 4.5's fast, direct behavior: no extended thinking, so thinking
+        // tokens can't eat into the 4096 JSON budget and truncate the response.
+        thinking: { type: 'disabled' as const },
         system: [
           {
             type: 'text' as const,
