@@ -4,6 +4,8 @@ No step in this document has been executed against production. Deployment, migra
 
 ## 1. Prepare a sandbox and inventory the real schema
 
+First read [SCHEMA-COMPATIBILITY.md](SCHEMA-COMPATIBILITY.md). It records the hosted CHECK/index/backfill correction and the separate decisions for real billing reconciliation, Jose's personal test Pro entitlement, reversible synthetic billing quarantine, webhook event alignment and legacy ACL follow-up. Those gates remain unresolved; do not deploy the earlier `f4fbc78` candidate.
+
 Use a separate Supabase project, Stripe sandbox/test-mode resources, test webhook endpoint and isolated PostHog project. Give each environment its own secrets and allowlisted price IDs. Never copy production customers or transcripts into the sandbox. Ensure the selected Vercel project is the production application, rather than similarly named landing projects, before any later authorized operation.
 
 Compare actual columns, nullability, constraints, indexes, table grants, RLS policies and existing triggers against the proposal. Verify the installed Supabase Postgres version, service_role/BYPASSRLS behavior, and `auth.users` foreign keys. Inspect whether the status constraint has a different name. Confirm no pre-existing function/table/index conflicts. Confirm existing own-user SELECT/DELETE policies remain appropriate. The proposal removes authenticated subscription writes and session/question insertion plus session updates; it intentionally preserves history reads and existing recording/analysis writes. Review those preserved policies separately rather than claiming complete storage/content integrity protection.

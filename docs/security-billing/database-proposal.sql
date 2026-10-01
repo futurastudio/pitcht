@@ -3,12 +3,28 @@
 BEGIN;
 GRANT USAGE ON SCHEMA public TO service_role;
 
+-- Hosted Pitcht already has a valid UNIQUE(recording_id) constraint/index.
+-- Preserve it rather than adding a second index; fail closed if a fixture differs.
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_index i JOIN pg_attribute a
+      ON a.attrelid=i.indrelid AND a.attnum=i.indkey[0]
+    WHERE i.indrelid='public.analyses'::regclass AND i.indisunique AND i.indisvalid
+      AND i.indisready AND i.indnkeyatts=1 AND i.indpred IS NULL AND i.indexprs IS NULL
+      AND a.attname='recording_id'
+  ) THEN RAISE EXCEPTION 'A valid full unique index on analyses(recording_id) is required'; END IF;
+END $$;
+
 ALTER TABLE public.subscriptions ADD COLUMN IF NOT EXISTS stripe_synced_at timestamptz;
 ALTER TABLE public.subscriptions ADD COLUMN IF NOT EXISTS billing_revision bigint NOT NULL DEFAULT 0;
 ALTER TABLE public.subscriptions DROP CONSTRAINT IF EXISTS subscriptions_status_check;
 ALTER TABLE public.subscriptions ADD CONSTRAINT subscriptions_status_check CHECK
   (status IN ('active','trialing','past_due','canceled','incomplete','incomplete_expired','unpaid','paused'));
 ALTER TABLE public.sessions ADD COLUMN IF NOT EXISTS access_expires_at timestamptz;
+-- The hosted constraint predates internship support. Keep historical sales pitches valid.
+ALTER TABLE public.sessions DROP CONSTRAINT IF EXISTS sessions_session_type_check;
+ALTER TABLE public.sessions ADD CONSTRAINT sessions_session_type_check CHECK
+  (session_type IN ('job-interview','internship-interview','presentation','sales-pitch'));
 
 CREATE TABLE public.billing_events (
   id text PRIMARY KEY, subscription_id text NOT NULL, event_created bigint NOT NULL,
@@ -40,7 +56,9 @@ CREATE INDEX billing_analytics_pending_idx ON public.billing_analytics_outbox(cr
 CREATE INDEX billing_analytics_subscription_pending_idx ON public.billing_analytics_outbox(subscription_id)
   WHERE delivered_at IS NULL;
 INSERT INTO public.practice_completed_usage(session_id,user_id,completed_at)
-  SELECT id,user_id,created_at FROM public.sessions WHERE status='completed';
+  -- Preserve existing completed-usage semantics, including rows whose recordings
+  -- may have been deleted. Any grandfathering adjustment needs separate approval.
+  SELECT id,user_id,coalesce(completed_at,created_at) FROM public.sessions WHERE status='completed';
 
 ALTER TABLE public.billing_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.billing_analytics_outbox ENABLE ROW LEVEL SECURITY;
@@ -254,6 +272,5 @@ GRANT EXECUTE ON FUNCTION public.sync_billing_subscription(jsonb,bigint,text,big
   public.create_practice_session(uuid,text,text,jsonb), public.preserve_billing_binding(),
   public.record_practice_completion() TO service_role;
 
--- Preflight duplicates first. This proposal must fail instead of deleting customer analyses.
-CREATE UNIQUE INDEX IF NOT EXISTS analyses_recording_id_unique ON public.analyses(recording_id);
+-- Preserve the existing recording uniqueness constraint verified by the preflight above.
 COMMIT;

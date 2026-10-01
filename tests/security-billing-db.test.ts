@@ -13,6 +13,10 @@ const socket = process.env.PITCHT_TEST_PG_SOCKET;
 const enabled = !!socket;
 if (enabled && !isAbsolute(socket!)) throw new Error('Only an absolute Unix socket path is allowed');
 const proposal = readFileSync('docs/security-billing/database-proposal.sql','utf8');
+const historicalSalesId = randomUUID();
+const historicalNoCompletionTimeId = randomUUID();
+let migratedHistoricalSales: Row | undefined;
+let migratedHistoricalUsage: Row[] = [];
 async function connection(name = 'security-test') {
   const client = new Client({ host:socket,port:54379,user:'pitcht_test',database:'pitcht_security_test',application_name:name });
   await client.connect(); return client;
@@ -57,11 +61,40 @@ before(async()=>{
     await db.query(readFileSync('tests/security-billing-fixture.sql','utf8'));
     await db.query(readFileSync('create_subscriptions_table.sql','utf8'));
     await db.query(readFileSync('add_rls_policies.sql','utf8'));
+    // Hosted Pitcht still permits the retired sales-pitch type but excludes internships.
+    // Seed before the real proposal so the test proves migration preserves old data.
+    await db.query("INSERT INTO sessions(id,user_id,session_type,context,status,created_at,completed_at) VALUES($1,$2,'sales-pitch','historical context','completed','2026-09-27T09:00:00Z','2026-09-28T12:34:56Z')",[historicalSalesId,USER_B]);
+    await db.query("INSERT INTO sessions(id,user_id,session_type,context,status,created_at) VALUES($1,$2,'job-interview','historical missing timestamp','completed','2026-09-26T10:00:00Z')",[historicalNoCompletionTimeId,USER_B]);
+    await assert.rejects(db.query("INSERT INTO sessions(user_id,session_type,status) VALUES($1,'internship-interview','in_progress')",[USER_A]),{code:'23514'});
     await db.query(proposal);
+    migratedHistoricalSales=(await db.query('SELECT id,session_type,status FROM sessions WHERE id=$1',[historicalSalesId])).rows[0];
+    migratedHistoricalUsage=(await db.query('SELECT session_id,completed_at FROM practice_completed_usage ORDER BY session_id')).rows;
   } finally { await db.end(); }
 });
 beforeEach(async()=>{
   if(enabled) await query('TRUNCATE subscriptions,sessions,questions,recordings,analyses,billing_events,billing_analytics_outbox,ai_usage_windows,ai_operation_leases,practice_completed_usage CASCADE',[], '');
+});
+
+test('SQL: hosted session-type constraint admits every current practice type and preserves historical sales pitches',{skip:!enabled},async()=>{
+  assert.deepEqual(migratedHistoricalSales,{id:historicalSalesId,session_type:'sales-pitch',status:'completed'});
+  for(const type of ['job-interview','internship-interview','presentation']) {
+    const id=(await query('SELECT public.create_practice_session($1,$2,$3,$4::jsonb) AS id',[USER_A,type,'context',JSON.stringify(question())]))[0].id;
+    assert.equal((await query('SELECT session_type FROM sessions WHERE id=$1',[id]))[0].session_type,type);
+    assert.equal(Number((await query('SELECT count(*) AS n FROM questions WHERE session_id=$1',[id]))[0].n),1);
+  }
+  await assert.rejects(query("INSERT INTO sessions(user_id,session_type,status) VALUES($1,'unsupported-type','in_progress')",[USER_B]),{code:'23514'});
+});
+
+test('SQL: legacy completion backfill uses completion time with creation fallback and preserves completed usage',{skip:!enabled},()=>{
+  assert.equal(migratedHistoricalUsage.length,2);
+  const times=new Map(migratedHistoricalUsage.map(row=>[row.session_id,new Date(String(row.completed_at)).toISOString()]));
+  assert.equal(times.get(historicalSalesId),'2026-09-28T12:34:56.000Z');
+  assert.equal(times.get(historicalNoCompletionTimeId),'2026-09-26T10:00:00.000Z');
+});
+
+test('SQL: hosted unique recording index is preserved without a redundant second index',{skip:!enabled},async()=>{
+  const indexes=await query("SELECT i.indexrelid::regclass::text AS name FROM pg_index i JOIN pg_attribute a ON a.attrelid=i.indrelid AND a.attnum=i.indkey[0] WHERE i.indrelid='public.analyses'::regclass AND i.indisunique AND i.indnkeyatts=1 AND a.attname='recording_id' ORDER BY name");
+  assert.deepEqual(indexes,[{name:'analyses_recording_id_key'}]);
 });
 
 test('SQL: duplicate webhook ledger and distinct events for same purchase yield one canonical outbox row',{skip:!enabled},async()=>{

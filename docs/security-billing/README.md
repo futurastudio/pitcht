@@ -1,6 +1,6 @@
 # Pitcht security and billing review patch
 
-This branch repairs the first security/billing tranche identified in the October 1, 2026 audit. It is a local review candidate. No production migration, deployment, push, real payment, customer contact, or provider generation was performed. The original checkout and its unpublished drafts are preserved.
+This branch repairs the first security/billing tranche identified in the October 1, 2026 audit. It is a local review candidate. No production migration, deployment, push, real payment or customer contact was performed. Separately approved local/browser and bounded provider rehearsals are documented outside this commit; they do not establish Stripe sandbox lifecycle success. The original checkout and its unpublished drafts are preserved.
 
 Base: `a2f81467d88e03c6631e22111f368c4074f660d9` (the application code matches production `3a47ec26cd8ccb1a6250ce5f2f6721c430663a78`; the difference is four documentation moves). The independent checkout branch is `codex/security-billing-repair`.
 
@@ -35,6 +35,8 @@ PITCHT_TEST_PG_SOCKET=/absolute/temporary/socket/directory npm test
 **The SQL test setup deliberately drops and recreates the test database's public/auth schemas.** It refuses TCP hosts and clusters without the dedicated data-directory name. Never point it at an existing application database, production credentials or a shared development cluster. Shut down the disposable cluster after testing. The fixture mimics the application's schema/RLS; it is not a replica of hosted Supabase infrastructure.
 
 ## Release gates and remaining scope
+
+Read [SCHEMA-COMPATIBILITY.md](SCHEMA-COMPATIBILITY.md) for the subsequent hosted-schema correction, its regressions and unresolved data/webhook decisions. Candidate `f4fbc78` must not be deployed as written. The revised proposal preserves the hosted unique recording constraint, supports internships while retaining historical sales pitches, and preserves actual historical completion timestamps.
 
 Read [ROLLOUT.md](ROLLOUT.md) before approving any deployment. `database-proposal.sql` is a review proposal, not an applied or automatically runnable production migration. It requires actual schema inventory, duplicate checks, sandbox integration, reconciliation and a maintenance window. Applying the database revocations before the new code breaks old client writes; deploying the new code first leaves required RPCs absent. There is no claim of a transparent rolling release.
 

@@ -1,4 +1,8 @@
 
+> pitcht@0.1.0 lint
+> eslint .
+
+
 /Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/app/analysis/page.tsx
   321:8  warning  React Hook useEffect has a missing dependency: 'user'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
 

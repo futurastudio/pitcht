@@ -1,0 +1,28 @@
+TAP version 13
+# Subtest: SQL: hosted session-type constraint admits every current practice type and preserves historical sales pitches
+not ok 1 - SQL: hosted session-type constraint admits every current practice type and preserves historical sales pitches
+  ---
+  duration_ms: 157.807083
+  type: 'test'
+  location: '/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/tests/security-billing-db.test.ts:2:5840'
+  failureType: 'testCodeFailure'
+  error: 'new row for relation "sessions" violates check constraint "sessions_session_type_check"'
+  code: '23514'
+  name: 'error'
+  stack: |-
+    /Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/node_modules/pg/lib/client.js:545:17
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async query (/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/tests/security-billing-db.test.ts:24:64)
+    async TestContext.<anonymous> (/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/tests/security-billing-db.test.ts:77:15)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 765.053292
