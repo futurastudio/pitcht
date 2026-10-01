@@ -36,6 +36,8 @@ PITCHT_TEST_PG_SOCKET=/absolute/temporary/socket/directory npm test
 
 ## Release gates and remaining scope
 
+Read [INTERNAL-PRO.md](INTERNAL-PRO.md) for the subsequently approved personal internal-test entitlement, exact-user restrictions, seven new regressions and reversible rollout. Automated demo retirement is still pending. This preserves personal practice access separately from canonical Stripe billing; no hosted grant or quarantine has been applied.
+
 Read [SCHEMA-COMPATIBILITY.md](SCHEMA-COMPATIBILITY.md) for the subsequent hosted-schema correction, its regressions and unresolved data/webhook decisions. Candidate `f4fbc78` must not be deployed as written. The revised proposal preserves the hosted unique recording constraint, supports internships while retaining historical sales pitches, and preserves actual historical completion timestamps.
 
 Read [ROLLOUT.md](ROLLOUT.md) before approving any deployment. `database-proposal.sql` is a review proposal, not an applied or automatically runnable production migration. It requires actual schema inventory, duplicate checks, sandbox integration, reconciliation and a maintenance window. Applying the database revocations before the new code breaks old client writes; deploying the new code first leaves required RPCs absent. There is no claim of a transparent rolling release.

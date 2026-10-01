@@ -13,6 +13,7 @@ export async function POST(request: Request) {
     if (body.userId !== undefined && body.userId !== user.id) throw new ApiError(403, 'Account mismatch.');
     const priceId = requireApprovedPrice(body.priceId);
     const access = await getPracticeAccess(user.id);
+    if (access.entitlementSource === 'internal_test') throw new ApiError(409, 'This account has internal test Pro access. No checkout is required.');
     if (access.isPremium || access.isTrialing) throw new ApiError(409, 'You already have a subscription. Manage billing in settings.');
     await reserveOperation(user.id, 'checkout');
     const { data: prior, error } = await getAdmin().from('subscriptions').select('stripe_customer_id')

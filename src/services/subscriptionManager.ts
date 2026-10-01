@@ -7,6 +7,7 @@ export interface SubscriptionCheckResult {
   reason?: string;
   isPremium: boolean;
   isTrialing: boolean;
+  entitlementSource?: 'stripe' | 'internal_test' | 'free';
   trialEndsAt: Date | null;
   sessionsThisMonth: number;
   sessionsRemaining: number;

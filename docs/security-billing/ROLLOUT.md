@@ -43,6 +43,8 @@ Execute fresh Chrome and Safari browser flows using test accounts and synthetic 
 
 ## 3. Reconcile legacy billing in the approved cutover
 
+Personal internal Pro is approved only for the verified owner UUID. Follow [INTERNAL-PRO.md](INTERNAL-PRO.md) for its private grant and reversible personal-binding quarantine review; do not silently retire the other automated demo account, which remains undecided. The internal grant does not substitute for reconciliation of real paid/canceled Stripe bindings.
+
 Before the window, produce a read-only reconciliation inventory: each local Stripe subscription/customer/user binding, current Stripe state, allowed price, item-level period, any cross-user/customer conflict, and the exact intended correction. Parent live evidence found two Stripe-canceled subscriptions still marked active locally. Validate the inventory again at cutover rather than trusting the earlier snapshot.
 
 After the new schema exists, refresh each verified existing binding through the privileged synchronization contract, using current Stripe state and a revision check. Update status/period/sync timestamp without inventing a purchase event, changing ownership or replaying charges. Leave conflicts blocked for explicit review. Active/trialing rows need successful fresh verification before access can be restored; all legacy `stripe_synced_at` values begin null. Canceled and expired rows must not be granted grace. Re-run read-only comparison and verify no cross-user mappings or unexpected state changes. This branch supplies the synchronization RPC/service, not an approved bulk production execution script.

@@ -4,6 +4,7 @@ import { getAdmin, getStripe } from './clients';
 import { ApiError } from './errors';
 import { BILLING_REFRESH_MS, normalizeSubscription, paidAccess, stripeId, validateCheckout } from './billingPolicy';
 import { trackDurableEvent } from '@/utils/posthog-server';
+import { hasInternalTestAccess } from './internalTest';
 
 type BillingEvent = { id: string; created: number };
 
@@ -58,6 +59,9 @@ export async function verifyCheckout(sessionId: string, userId: string) {
 }
 
 export async function refreshUserBilling(userId: string) {
+  // Internal testing is separate from Stripe state, including historical demo IDs.
+  // Revoked/expired/missing grants still take the ordinary verified billing path.
+  if (await hasInternalTestAccess(userId)) return;
   const { data, error } = await getAdmin().from('subscriptions').select('*').eq('user_id', userId);
   if (error) throw new Error('Entitlement lookup failed');
   const rows = data ?? [];

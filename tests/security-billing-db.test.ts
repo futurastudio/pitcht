@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { isAbsolute, basename } from 'node:path';
-import { USER_A, USER_B } from './module-loader';
+import { USER_A, USER_B, INTERNAL_TEST_USER } from './module-loader';
 
 type Row = Record<string, unknown>;
 type PgClient = { connect():Promise<void>; end():Promise<void>; query<T extends Row = Row>(sql:string,args?:unknown[]):Promise<{rows:T[]}> };
@@ -17,6 +17,7 @@ const historicalSalesId = randomUUID();
 const historicalNoCompletionTimeId = randomUUID();
 let migratedHistoricalSales: Row | undefined;
 let migratedHistoricalUsage: Row[] = [];
+let migratedInternalGrant = false;
 async function connection(name = 'security-test') {
   const client = new Client({ host:socket,port:54379,user:'pitcht_test',database:'pitcht_security_test',application_name:name });
   await client.connect(); return client;
@@ -69,10 +70,68 @@ before(async()=>{
     await db.query(proposal);
     migratedHistoricalSales=(await db.query('SELECT id,session_type,status FROM sessions WHERE id=$1',[historicalSalesId])).rows[0];
     migratedHistoricalUsage=(await db.query('SELECT session_id,completed_at FROM practice_completed_usage ORDER BY session_id')).rows;
+    migratedInternalGrant=(await db.query('SELECT public.internal_test_access($1) AS allowed',[INTERNAL_TEST_USER])).rows[0].allowed===true;
   } finally { await db.end(); }
 });
 beforeEach(async()=>{
-  if(enabled) await query('TRUNCATE subscriptions,sessions,questions,recordings,analyses,billing_events,billing_analytics_outbox,ai_usage_windows,ai_operation_leases,practice_completed_usage CASCADE',[], '');
+  if(enabled) await query('TRUNCATE subscriptions,sessions,questions,recordings,analyses,billing_events,billing_analytics_outbox,ai_usage_windows,ai_operation_leases,practice_completed_usage,internal_test_entitlements CASCADE',[], '');
+});
+
+async function grantInternal() {
+  await query("INSERT INTO public.internal_test_entitlements(user_id,purpose) VALUES($1,'owner_internal_testing')",[INTERNAL_TEST_USER],'');
+}
+async function exhaustInternalFreeAllowance() {
+  for(let i=0;i<3;i++) await query("INSERT INTO public.sessions(user_id,session_type,status) VALUES($1,'job-interview','completed')",[INTERNAL_TEST_USER]);
+}
+async function internalStatus() {
+  return (await query('SELECT public.practice_access_status($1) AS result',[INTERNAL_TEST_USER]))[0].result as Row;
+}
+
+test('SQL: approved exact-user internal Pro preserves history, budgets and ownership without canonical billing writes',{skip:!enabled},async()=>{
+  assert.equal(migratedInternalGrant,true);
+  await exhaustInternalFreeAllowance();
+  assert.equal((await internalStatus()).allowed,false);
+  await query("INSERT INTO subscriptions(user_id,stripe_subscription_id,stripe_customer_id,stripe_price_id,status) VALUES($1,'sub_demo_synthetic','cus_demo_synthetic','price_monthly','active')",[INTERNAL_TEST_USER]);
+  const before=await query('SELECT * FROM subscriptions');
+  await grantInternal();
+  const access=await internalStatus();
+  assert.equal(access.isPremium,true);assert.equal(access.isTrialing,false);
+  assert.equal(access.entitlementSource,'internal_test');assert.equal(access.sessionsThisMonth,3);
+  assert.equal(access.allowed,true);assert.equal(access.sessionsRemaining,-1);
+  const id=(await query("SELECT create_practice_session($1,'job-interview','context',$2::jsonb) AS id",[INTERNAL_TEST_USER,JSON.stringify(question())]))[0].id;
+  assert.equal(Number((await query("SELECT extract(epoch FROM access_expires_at-clock_timestamp()) AS seconds FROM sessions WHERE id=$1",[id]))[0].seconds)>13*86400,true);
+  assert.equal(Number((await query("SELECT count(*) AS n FROM sessions WHERE user_id=$1 AND status='completed'",[INTERNAL_TEST_USER]))[0].n),3);
+  const budgets=await Promise.all(Array.from({length:11},()=>query("SELECT consume_ai_budget($1,'questions') AS result",[INTERNAL_TEST_USER])));
+  assert.equal(budgets.filter(r=>(r[0].result as Row).allowed).length,10);
+  assert.equal(budgets.filter(r=>(r[0].result as Row).reason==='rate_limited').length,1);
+  const foreign=await legacy();
+  assert.equal(((await query("SELECT consume_ai_budget($1,'feedback',$2) AS result",[INTERNAL_TEST_USER,foreign.rid]))[0].result as Row).reason,'not_owned');
+  assert.deepEqual(await query('SELECT * FROM subscriptions'),before);
+  assert.equal(Number((await query('SELECT count(*) AS n FROM billing_events'))[0].n),0);
+  assert.equal(Number((await query('SELECT count(*) AS n FROM billing_analytics_outbox'))[0].n),0);
+});
+
+test('SQL: internal Pro revocation, expiry and missing grant restore ordinary allowance without erasing usage',{skip:!enabled},async()=>{
+  await exhaustInternalFreeAllowance();await grantInternal();
+  await query('UPDATE internal_test_entitlements SET revoked_at=clock_timestamp()');
+  assert.equal((await internalStatus()).allowed,false);assert.equal((await internalStatus()).entitlementSource,'free');
+  await query("UPDATE internal_test_entitlements SET revoked_at=NULL,expires_at=clock_timestamp()-interval '1 minute'");
+  assert.equal((await internalStatus()).isPremium,false);assert.equal((await internalStatus()).allowed,false);
+  await query('DELETE FROM internal_test_entitlements',[],'');
+  assert.equal((await internalStatus()).allowed,false);assert.equal((await internalStatus()).sessionsThisMonth,3);
+});
+
+test('SQL: internal grant is pinned to one user and denied to all client roles, including the owner',{skip:!enabled},async()=>{
+  await grantInternal();
+  await assert.rejects(query("INSERT INTO internal_test_entitlements(user_id,purpose) VALUES($1,'owner_internal_testing')",[USER_A],''),{code:'23514'});
+  assert.equal((await query('SELECT internal_test_access($1) AS allowed',[USER_A]))[0].allowed,false);
+  for(const role of ['anon','authenticated']) {
+    await assert.rejects(query('SELECT * FROM internal_test_entitlements',[],role),{code:'42501'});
+    await assert.rejects(query('UPDATE internal_test_entitlements SET revoked_at=NULL',[],role),{code:'42501'});
+    await assert.rejects(query('SELECT internal_test_access($1)',[INTERNAL_TEST_USER],role),{code:'42501'});
+  }
+  await assert.rejects(query('DELETE FROM internal_test_entitlements'),{code:'42501'});
+  await assert.rejects(query("INSERT INTO internal_test_entitlements(user_id,purpose) VALUES($1,'owner_internal_testing')",[INTERNAL_TEST_USER]),{code:'42501'});
 });
 
 test('SQL: hosted session-type constraint admits every current practice type and preserves historical sales pitches',{skip:!enabled},async()=>{

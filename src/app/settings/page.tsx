@@ -292,7 +292,7 @@ export default function SettingsPage() {
                 {subscriptionStatus.isPremium && (
                   <span className="inline-flex items-center gap-2">
                     <span className="w-2 h-2 bg-white/60 rounded-full"></span>
-                    Pro
+                    {subscriptionStatus.entitlementSource === 'internal_test' ? 'Pro (internal test)' : 'Pro'}
                   </span>
                 )}
                 {subscriptionStatus.isTrialing && !subscriptionStatus.isPremium && (
@@ -350,7 +350,7 @@ export default function SettingsPage() {
 
         {subscriptionStatus.isPremium && (
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 mb-6">
-            <h2 className="text-2xl font-bold text-white mb-6">Pro Subscription</h2>
+            <h2 className="text-2xl font-bold text-white mb-6">{subscriptionStatus.entitlementSource === 'internal_test' ? 'Internal test Pro access' : 'Pro Subscription'}</h2>
 
             {/* Feature List */}
             <div className="mb-6">
@@ -388,6 +388,10 @@ export default function SettingsPage() {
             </div>
 
             {/* Manage Subscription Button */}
+            {subscriptionStatus.entitlementSource === 'internal_test' ? (
+              <p className="text-white/60 text-sm">Internal test access has no Stripe billing subscription.</p>
+            ) : (
+            <>
             <button
               onClick={handleManageSubscription}
               disabled={isLoadingPortal}
@@ -398,6 +402,8 @@ export default function SettingsPage() {
             <p className="text-white/50 text-sm mt-3 text-center">
               Update payment method, view invoices, or cancel subscription
             </p>
+            </>
+            )}
           </div>
         )}
 

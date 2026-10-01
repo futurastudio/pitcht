@@ -7,23 +7,23 @@
 ⚠ Warning: Next.js ignored package-lock.json in /Users/joseartigas because it is outside the current Git repository (/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review).
  To use this directory, set `turbopack.root` in your Next.js config.
 
-✓ Running next.config.ts took 530ms
+✓ Running next.config.ts took 1087ms
 - Experiments (use with caution):
   · clientTraceMetadata
 
   Creating an optimized production build ...
 [@sentry/nextjs] DEPRECATION WARNING: disableLogger is deprecated and will be removed in a future version. Use webpack.treeshake.removeDebugLogging instead. (Not supported with Turbopack.)
-✓ Compiled successfully in 1421ms
+✓ Compiled successfully in 2.4s
   Running next.config.js provided runAfterProductionCompile ...
-✓ Completed runAfterProductionCompile in 328ms
+✓ Completed runAfterProductionCompile in 350ms
   Running TypeScript ...
-  Finished TypeScript in 4.2s ...
+  Finished TypeScript in 4.7s ...
   Collecting page data using 7 workers ...
   Generating static pages using 7 workers (0/34) ...
   Generating static pages using 7 workers (8/34)
   Generating static pages using 7 workers (16/34)
   Generating static pages using 7 workers (25/34)
-✓ Generating static pages using 7 workers (34/34) in 379ms
+✓ Generating static pages using 7 workers (34/34) in 361ms
   Finalizing page optimization ...
 
 Route (app)

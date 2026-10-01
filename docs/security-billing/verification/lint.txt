@@ -28,7 +28,7 @@
   18:59  warning  'recordingDuration' is assigned a value but never used  @typescript-eslint/no-unused-vars
 
 /Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/context/AuthContext.tsx
-  99:6  warning  React Hook useEffect has a missing dependency: 'refreshSubscriptionStatus'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+  100:6  warning  React Hook useEffect has a missing dependency: 'refreshSubscriptionStatus'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
 
 /Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/context/InterviewContext.tsx
   112:8  warning  React Hook useEffect has a missing dependency: 'sessionContext'. Either include it or remove the dependency array  react-hooks/exhaustive-deps

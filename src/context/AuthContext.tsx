@@ -10,6 +10,7 @@ import type { User } from '@supabase/supabase-js';
 interface SubscriptionStatus {
   isPremium: boolean;
   isTrialing: boolean;
+  entitlementSource?: 'stripe' | 'internal_test' | 'free';
   trialEndsAt: Date | null;
   sessionsThisMonth: number;
   canStartSession: boolean;
@@ -109,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSubscriptionStatus({
         isPremium: access.isPremium,
         isTrialing: access.isTrialing,
+        entitlementSource: access.entitlementSource,
         trialEndsAt: access.trialEndsAt,
         sessionsThisMonth: access.sessionsThisMonth,
         canStartSession: access.allowed,

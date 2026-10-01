@@ -50,6 +50,17 @@ CREATE TABLE public.practice_completed_usage (
   session_id uuid PRIMARY KEY, user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   completed_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
+-- Separate owner-approved test entitlement. Never represents a Stripe subscription.
+CREATE TABLE public.internal_test_entitlements (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE
+    CHECK (user_id='dc869fa0-8652-4df1-bede-93a776ed70eb'::uuid),
+  purpose text NOT NULL CHECK (purpose='owner_internal_testing'),
+  granted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  expires_at timestamptz,
+  revoked_at timestamptz
+);
+INSERT INTO public.internal_test_entitlements(user_id,purpose)
+  VALUES('dc869fa0-8652-4df1-bede-93a776ed70eb','owner_internal_testing');
 CREATE INDEX practice_completed_usage_user_id_idx ON public.practice_completed_usage(user_id);
 CREATE INDEX billing_analytics_pending_idx ON public.billing_analytics_outbox(created_at)
   INCLUDE(subscription_id) WHERE delivered_at IS NULL;
@@ -65,8 +76,11 @@ ALTER TABLE public.billing_analytics_outbox ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_usage_windows ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_operation_leases ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.practice_completed_usage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.internal_test_entitlements ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.billing_events, public.billing_analytics_outbox, public.ai_usage_windows,
   public.ai_operation_leases, public.practice_completed_usage FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.internal_test_entitlements FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT, UPDATE ON public.internal_test_entitlements TO service_role;
 GRANT ALL ON public.billing_events, public.billing_analytics_outbox, public.ai_usage_windows,
   public.ai_operation_leases, public.practice_completed_usage TO service_role;
 REVOKE INSERT, UPDATE, DELETE ON public.subscriptions FROM anon, authenticated;
@@ -98,6 +112,15 @@ CREATE TRIGGER record_practice_completion AFTER INSERT OR UPDATE ON public.sessi
 
 -- All privileged functions are SECURITY INVOKER and executable only by service_role.
 -- There are deliberately no public SECURITY DEFINER APIs.
+CREATE FUNCTION public.internal_test_access(p_user_id uuid) RETURNS boolean
+LANGUAGE sql SECURITY INVOKER SET search_path=public,pg_temp AS $$
+  SELECT p_user_id='dc869fa0-8652-4df1-bede-93a776ed70eb'::uuid AND EXISTS (
+    SELECT 1 FROM public.internal_test_entitlements WHERE user_id=p_user_id
+      AND purpose='owner_internal_testing' AND revoked_at IS NULL
+      AND (expires_at IS NULL OR expires_at>clock_timestamp())
+  );
+$$;
+
 CREATE FUNCTION public.sync_billing_subscription(p_snapshot jsonb, p_expected_revision bigint,
   p_event_id text DEFAULT NULL, p_event_created bigint DEFAULT NULL, p_purchase jsonb DEFAULT NULL)
 RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp AS $$
@@ -154,8 +177,9 @@ END $$;
 
 CREATE FUNCTION public.practice_access_status(p_user_id uuid) RETURNS jsonb
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp AS $$
-DECLARE sub public.subscriptions%ROWTYPE; used integer; active integer;
+DECLARE sub public.subscriptions%ROWTYPE; used integer; active integer; internal_access boolean;
 BEGIN
+  internal_access:=public.internal_test_access(p_user_id);
   SELECT * INTO sub FROM public.subscriptions WHERE user_id = p_user_id AND stripe_synced_at > clock_timestamp() - interval '72 hours'
     AND (status IN ('active','trialing') AND current_period_end > clock_timestamp()
       OR status = 'active' AND current_period_end > clock_timestamp() - interval '72 hours'
@@ -164,11 +188,13 @@ BEGIN
   SELECT count(*) INTO used FROM public.practice_completed_usage WHERE user_id = p_user_id;
   SELECT count(*) INTO active FROM public.sessions WHERE user_id = p_user_id AND status = 'in_progress'
     AND access_expires_at > clock_timestamp();
-  RETURN jsonb_build_object('isPremium',coalesce(sub.status = 'active',false),'isTrialing',coalesce(sub.status = 'trialing',false),
-    'trialEndsAt',CASE WHEN sub.status = 'trialing' THEN sub.current_period_end ELSE NULL END,
-    'sessionsThisMonth',used,'sessionsRemaining',CASE WHEN sub.id IS NOT NULL THEN -1 ELSE greatest(0,3-used) END,
-    'allowed',sub.id IS NOT NULL OR used + active < 3,
-    'reason',CASE WHEN sub.id IS NULL AND used + active >= 3 THEN 'Your free sessions are used or in progress. Upgrade or finish an existing session.' ELSE NULL END);
+  RETURN jsonb_build_object('isPremium',internal_access OR coalesce(sub.status = 'active',false),
+    'isTrialing',NOT internal_access AND coalesce(sub.status = 'trialing',false),
+    'trialEndsAt',CASE WHEN NOT internal_access AND sub.status = 'trialing' THEN sub.current_period_end ELSE NULL END,
+    'entitlementSource',CASE WHEN internal_access THEN 'internal_test' WHEN sub.id IS NOT NULL THEN 'stripe' ELSE 'free' END,
+    'sessionsThisMonth',used,'sessionsRemaining',CASE WHEN internal_access OR sub.id IS NOT NULL THEN -1 ELSE greatest(0,3-used) END,
+    'allowed',internal_access OR sub.id IS NOT NULL OR used + active < 3,
+    'reason',CASE WHEN NOT internal_access AND sub.id IS NULL AND used + active >= 3 THEN 'Your free sessions are used or in progress. Upgrade or finish an existing session.' ELSE NULL END);
 END $$;
 
 CREATE FUNCTION public.consume_ai_budget(p_user_id uuid, p_operation text, p_recording_id uuid DEFAULT NULL)
@@ -264,10 +290,12 @@ BEGIN
 END $$;
 
 REVOKE ALL ON FUNCTION public.sync_billing_subscription(jsonb,bigint,text,bigint,jsonb),
+  public.internal_test_access(uuid),
   public.practice_access_status(uuid), public.consume_ai_budget(uuid,text,uuid),
   public.create_practice_session(uuid,text,text,jsonb), public.preserve_billing_binding(),
   public.record_practice_completion() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sync_billing_subscription(jsonb,bigint,text,bigint,jsonb),
+  public.internal_test_access(uuid),
   public.practice_access_status(uuid), public.consume_ai_budget(uuid,text,uuid),
   public.create_practice_session(uuid,text,text,jsonb), public.preserve_billing_binding(),
   public.record_practice_completion() TO service_role;

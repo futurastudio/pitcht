@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { hasInternalTestAccess } from '@/server/internalTest';
 
 export const maxDuration = 30;
 
@@ -70,6 +71,10 @@ export async function POST(request: Request) {
         { error: 'Unauthorized - user ID mismatch' },
         { status: 403 }
       );
+    }
+
+    if (await hasInternalTestAccess(authUser.id)) {
+      return NextResponse.json({ error: 'Internal test Pro access has no Stripe billing subscription.' }, { status: 409 });
     }
 
     // Get user's subscription to find their Stripe customer ID
