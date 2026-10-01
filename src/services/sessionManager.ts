@@ -6,6 +6,7 @@
 import { supabase, uploadVideo, getVideoUrl as getVideoUrlFromStorage } from './supabase';
 import type { SessionType, Question } from '@/types/interview';
 import type { Diagnosis } from '@/utils/diagnosisTaxonomy';
+import { apiFetch } from '@/utils/api';
 
 // Re-export getVideoUrl for convenience
 export { getVideoUrl } from './supabase';
@@ -69,52 +70,13 @@ export async function createSession(
   context: string,
   questions: Question[]
 ): Promise<string> {
-  console.log(`📝 Creating session: ${sessionType}`);
-
-  // Insert session
-  const { data: session, error: sessionError } = await supabase
-    .from('sessions')
-    .insert({
-      user_id: userId,
-      session_type: sessionType,
-      context: context,
-      status: 'in_progress',
-    })
-    .select('id')
-    .single();
-
-  if (sessionError) {
-    console.error('Session creation error:', sessionError);
-    throw new Error(`Failed to create session: ${sessionError.message}`);
-  }
-
-  const sessionId = session.id;
-  console.log(`✅ Session created: ${sessionId}`);
-
-  // Insert questions
-  if (questions.length > 0) {
-    const questionsData = questions.map((q, index) => ({
-      id: q.id, // CRITICAL: Use the UUID from client-side question (generated in claude.ts)
-      session_id: sessionId,
-      question_text: q.text,
-      question_type: q.type,
-      difficulty: q.difficulty || 3,
-      position: index,
-    }));
-
-    const { error: questionsError } = await supabase
-      .from('questions')
-      .insert(questionsData);
-
-    if (questionsError) {
-      console.error('Questions insert error:', questionsError);
-      throw new Error(`Failed to save questions: ${questionsError.message}`);
-    }
-
-    console.log(`✅ ${questions.length} questions saved with IDs:`, questionsData.map(q => q.id));
-  }
-
-  return sessionId;
+  const response = await apiFetch('/api/create-practice-session', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, sessionType, context, questions }),
+  });
+  const result = await response.json();
+  if (!response.ok || typeof result.sessionId !== 'string') throw new Error(result.error || 'Session could not be saved.');
+  return result.sessionId;
 }
 
 /**
@@ -237,22 +199,11 @@ export async function saveAnalysis(
  * @param sessionId - Session ID
  */
 export async function completeSession(sessionId: string): Promise<void> {
-  console.log(`✅ Completing session: ${sessionId}`);
-
-  const { error } = await supabase
-    .from('sessions')
-    .update({
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', sessionId);
-
-  if (error) {
-    console.error('Session completion error:', error);
-    throw new Error(`Failed to complete session: ${error.message}`);
-  }
-
-  console.log(`✅ Session marked as completed`);
+  const response = await apiFetch('/api/complete-session', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }),
+  });
+  const result = await response.json();
+  if (!response.ok || !result.success) throw new Error(result.error || 'Session could not be completed.');
 }
 
 /**

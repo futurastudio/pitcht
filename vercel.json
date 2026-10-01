@@ -6,6 +6,10 @@
   "regions": ["iad1"],
   "crons": [
     {
+      "path": "/api/cron/billing-analytics",
+      "schedule": "0 * * * *"
+    },
+    {
       "path": "/api/cron/sms-check",
       "schedule": "0 */6 * * *"
     },

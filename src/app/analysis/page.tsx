@@ -398,6 +398,7 @@ function AnalysisContent() {
                         ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
                     },
                     body: JSON.stringify({
+                        recordingId: selectedRecording.recordingId,
                         sessionType: sessionType || 'job-interview',
                         questionText: selectedRecording.questionText,
                         transcript: selectedRecording.transcript,
@@ -496,6 +497,7 @@ function AnalysisContent() {
             // Extract audio (send the video blob — transcribe endpoint handles it)
             const formData = new FormData();
             formData.append('audio', videoBlob, 'recording.webm');
+            formData.append('recordingId', recording.recordingId!);
             if (recording.questionText) {
                 formData.append('prompt', recording.questionText);
             }

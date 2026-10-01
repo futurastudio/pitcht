@@ -241,7 +241,7 @@ export default function InterviewPage() {
     };
 
     // Helper function to transcribe audio
-    const transcribeRecording = async (audioBlob: Blob): Promise<{ transcript: string; duration?: number }> => {
+    const transcribeRecording = async (audioBlob: Blob, recordingId: string): Promise<{ transcript: string; duration?: number }> => {
         try {
             setIsTranscribing(true);
 
@@ -260,6 +260,7 @@ export default function InterviewPage() {
                     const formData = new FormData();
                     const audioFile = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
                     formData.append('audio', audioFile);
+                    formData.append('recordingId', recordingId);
 
                     // Optional: Add context as prompt for better accuracy
                     if (currentQuestion) {
@@ -342,6 +343,7 @@ export default function InterviewPage() {
                     ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
                 },
                 body: JSON.stringify({
+                    recordingId,
                     sessionType: sessionType,
                     questionText: questionText,
                     transcript: transcript,
@@ -410,6 +412,10 @@ export default function InterviewPage() {
     };
 
     const handleToggleRecording = async () => {
+        if (!isRecording && !sessionId) {
+            toast.error('Your saved session is not ready. Wait a moment or return to setup and try again.');
+            return;
+        }
         if (isRecording) {
             // Stop Recording
             setIsRecording(false);
@@ -430,10 +436,6 @@ export default function InterviewPage() {
                 }
                 return;
             }
-
-            // Kick off transcription in parallel — audio blob is already
-            // smaller than the video blob (~2MB/min vs ~12MB/min).
-            const transcriptionPromise = transcribeRecording(audioBlob);
 
             // Optional Electron-only side effect: persist a local copy of
             // the video file for offline playback. This is additive — the
@@ -504,6 +506,7 @@ export default function InterviewPage() {
                 if (savedRecordingId) {
                     // Capture in a const so TS narrows inside the async callback
                     const recordingIdForPipeline: string = savedRecordingId;
+                    const transcriptionPromise = transcribeRecording(audioBlob, recordingIdForPipeline);
                     pendingTranscriptionsRef.current += 1;
                     const dbUpdatePromise: Promise<void> = transcriptionPromise.then(async ({ transcript, duration }) => {
                         if (!transcript || !duration) return;
@@ -619,6 +622,8 @@ export default function InterviewPage() {
                             tags: { area: 'interview', subsystem: 'complete-session' },
                             extra: { sessionId },
                         });
+                        toast.error('Could not finish this session. Please try again.');
+                        return;
                     }
                 }
                 // Pass sessionId so /analysis can hydrate from the DB
@@ -693,7 +698,8 @@ export default function InterviewPage() {
                         tags: { area: 'interview', subsystem: 'complete-session', path: 'skip-to-end' },
                         extra: { sessionId },
                     });
-                    // Don't block navigation on error
+                    toast.error('Could not finish this session. Please try again.');
+                    return;
                 }
             }
             const target = sessionId ? `/analysis?sessionId=${sessionId}` : '/analysis';

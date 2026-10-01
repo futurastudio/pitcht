@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/services/supabase';
 import { convertAnonymousToRealAccount } from '@/services/auth';
-import { TRIAL_SESSION_LIMIT } from '@/services/subscriptionManager';
+import { canUserStartSession } from '@/services/subscriptionManager';
 import { identifyUser, trackEvent, AnalyticsEvents } from '@/utils/analytics';
 import type { User } from '@supabase/supabase-js';
 
@@ -105,65 +105,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!uid) return;
 
     try {
-      // Check for active OR trialing premium subscription
-      const { data: subscriptions, error } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', uid)
-        .in('status', ['active', 'trialing'])
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      // A transient query failure must NOT fall through to the free-tier
-      // branch below — that would wrongly paywall a paying subscriber on a
-      // flaky connection. Preserve the prior subscriptionStatus instead.
-      if (error) {
-        console.error('Subscription query failed; preserving prior subscription state:', error);
-        return;
-      }
-
-      const subscription = subscriptions?.[0];
-
-      if (subscription) {
-        const isTrialing = subscription.status === 'trialing';
-        const isActive = subscription.status === 'active';
-        setSubscriptionStatus({
-          isPremium: isActive,  // Only true for paying subscribers, not trialing
-          isTrialing,
-          trialEndsAt: isTrialing && subscription.current_period_end
-            ? new Date(subscription.current_period_end)
-            : null,
-          sessionsThisMonth: 0,
-          canStartSession: true,
-        });
-        return;
-      }
-
-      // Check free trial usage: only count completed sessions, so an abandoned
-      // or in-progress session does not consume the trial (no permanent lockout
-      // from a refresh or crash). Trial status comes exclusively from the
-      // subscriptions table (managed by Stripe webhooks).
-      const { count, error: sessionsError } = await supabase
-        .from('sessions')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', uid)
-        .eq('status', 'completed');
-
-      // Same rule: if we can't read the session count, don't guess. Keep prior
-      // state rather than risk locking the user out of a session they're owed.
-      if (sessionsError) {
-        console.error('Session count query failed; preserving prior subscription state:', sessionsError);
-        return;
-      }
-
-      const sessionsTotal = count || 0;
-
+      const access = await canUserStartSession(uid);
       setSubscriptionStatus({
-        isPremium: false,
-        isTrialing: false,
-        trialEndsAt: null,
-        sessionsThisMonth: sessionsTotal,
-        canStartSession: sessionsTotal < TRIAL_SESSION_LIMIT,
+        isPremium: access.isPremium,
+        isTrialing: access.isTrialing,
+        trialEndsAt: access.trialEndsAt,
+        sessionsThisMonth: access.sessionsThisMonth,
+        canStartSession: access.allowed,
       });
     } catch (error) {
       console.error('Error fetching subscription status:', error);

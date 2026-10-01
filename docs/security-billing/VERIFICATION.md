@@ -1,0 +1,23 @@
+# Final local verification — October 1, 2026
+
+All checks below refer to the frozen security/billing patch in this independent checkout. Node 22.22.3 and PostgreSQL 18.6 (Homebrew) were used. Database execution was Unix-socket-only against `pitcht_security_test` in a disposable cluster containing synthetic users, subscriptions, sessions and recordings. No production credentials were supplied.
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| Actual source route/service/UI tests plus real SQL tests | 35 passed, 0 failed, 0 skipped | `verification/tests.tap` |
+| TypeScript, no incremental cache | Exit 0 | `verification/typecheck.txt` |
+| ESLint | Exit 0; 0 errors, 16 existing warnings | `verification/lint.txt` |
+| Next.js production build | Exit 0, compiled/prerendered successfully | `verification/build.txt` |
+| Production dependency audit (`--omit=dev`) | Exit 0; 0 advisories | `verification/dependency-production.json` |
+| Full dependency audit | 2 high advisories: Electron and extract-zip; major upgrade deferred | `verification/dependency-all.json` |
+| Diff whitespace check | Exit 0 | `git diff --check` |
+| Model/prompt source diff | Empty | `git diff -- src/services/claude.ts src/services/whisper.ts` |
+| Original checkout | Same HEAD and original dirty/untracked drafts preserved | No edits performed there |
+
+The 35 tests comprise the three existing recording-permission tests, 22 new behavior/fault tests and 10 real database tests. Newly covered paths include ownership/payment validation; stale-revision retry and persistence failure; unauthorized, foreign, oversized and codec-MIME audio; stored context and zero-score persistence; malformed feedback; cached results; signature/unpaid/invoice webhook handling; bearer/beacon completion; delayed-reservation duplicate prevention; acknowledged analytics/outbox failure; approved checkout identity and return URL; protected cron; recording-count/update-row failures; both actual completion UI branches; immutable SQL binding; service-only privileges; quota/history deletion; legacy NULL expiry; and controlled concurrent admission/completion.
+
+The route tests replace external SDK boundaries explicitly and disable network fetch. The UI completion test extracts and executes both actual source branches with injected completion failure and successful retry; it is not a browser/device simulation. The PostgreSQL fixture checks real privilege/transaction/concurrency behavior but is not hosted Supabase integration. No Stripe checkout, PostHog ingestion, AI generation, real microphone recording or production webhook replay was executed.
+
+Commands were run with `env -i`, a preserved executable PATH, HOME=/tmp and NODE_ENV=test or production. The full test command supplied `PITCHT_TEST_PG_SOCKET` for the disposable cluster and used `node --import tsx --test tests/*.test.ts`. The build supplied synthetic Supabase/Stripe/Anthropic/OpenAI values and no Sentry auth token, PostHog key or email credentials. Only public font downloads and npm registry/advisory reads required network access.
+
+The build emitted the existing Sentry disableLogger deprecation warning and a local parent-directory lockfile warning. It completed successfully. The lint warnings match the pre-existing baseline; this patch introduces no lint errors. Electron packaging, sandbox service integration, supported browser capture and the maintenance rehearsal remain release gates documented in `ROLLOUT.md`.

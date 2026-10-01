@@ -1,7 +1,7 @@
 'use client';
 
 import { apiFetch } from '@/utils/api';
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -23,13 +23,14 @@ function SuccessContent() {
     return () => clearTimeout(timer);
   }, []);
 
+  const viewedCheckout = useRef<string | null>(null);
   useEffect(() => {
-    // Track checkout completion on the client side as a backup signal
-    if (sessionId && user) {
+    // Page telemetry is distinct from the canonical durable server purchase event.
+    if (sessionId && user && viewedCheckout.current !== sessionId) {
+      viewedCheckout.current = sessionId;
       trackEvent('checkout_completed_page_view', {
         session_id: sessionId,
         user_id: user.id,
-        email: user.email,
       });
     }
   }, [sessionId, user]);

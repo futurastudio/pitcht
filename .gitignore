@@ -52,6 +52,7 @@ electron/preload.js
 *.md
 !README.md
 !CONVERSION_AUDIT_APRIL_2026.md
+!/docs/security-billing/*.md
 
 # Scripts (mostly local-only utilities; opt audit infra in)
 /scripts/*

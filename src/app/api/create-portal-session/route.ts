@@ -77,14 +77,13 @@ export async function POST(request: Request) {
       .from('subscriptions')
       .select('stripe_customer_id')
       .eq('user_id', userId)
-      .in('status', ['active', 'trialing'])
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
     if (error || !subscription) {
       return NextResponse.json(
-        { error: 'No active subscription found. Please subscribe to a plan first.' },
+        { error: 'No billing account found.' },
         { status: 404 }
       );
     }
