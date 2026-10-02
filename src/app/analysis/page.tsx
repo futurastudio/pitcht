@@ -1,5 +1,6 @@
 'use client';
 
+import { safeFeedbackDetails } from '@/utils/feedbackValidation';
 import { apiFetch } from '@/utils/api';
 import { extractRecordingAudio } from '@/utils/audioRecovery';
 import { CLIENT_UPGRADE_MESSAGE, MAX_TRANSCRIPTION_BYTES, transcriptionForm } from '@/utils/recordingContract';
@@ -71,6 +72,7 @@ function AnalysisContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const sessionIdParam = searchParams.get('sessionId');
+    const recordingIdParam = searchParams.get('recordingId');
 
     const { recordings: contextRecordings, updateRecording, clearSession, repeatSession, sessionType, sessionContext, questions } = useInterview();
     const { user, loading: authLoading, refreshSubscriptionStatus, subscriptionStatus } = useAuth();
@@ -148,12 +150,14 @@ function AnalysisContent() {
         let cancelled = false;
         setIsHydrating(true);
         setHydrateError(null);
+        setHydratedRecordings([]);
+        setSelectedRecording(null);
         (async () => {
             try {
                 const data = await getSessionDetails(sessionIdParam);
                 if (cancelled) return;
                 // Ownership check — defense in depth. RLS also enforces this server-side.
-                if (data && data.user_id && data.user_id !== user.id) {
+                if (!data || data.user_id !== user.id) {
                     setHydrateError('This session does not belong to your account.');
                     setHydratedRecordings([]);
                     return;
@@ -166,7 +170,13 @@ function AnalysisContent() {
                     return (qa?.position ?? 0) - (qb?.position ?? 0);
                 });
                 const mapped: Recording[] = rows.map(r => dbRowToRecording(r, questionMap.get(r.question_id || '')));
+                if (recordingIdParam && !mapped.some(row => row.recordingId === recordingIdParam)) {
+                    setHydrateError('This recording is not part of this session.');
+                    setHydratedRecordings([]);
+                    return;
+                }
                 setHydratedRecordings(mapped);
+                setSelectedRecording(mapped.find(row => row.recordingId === recordingIdParam) ?? mapped[0] ?? null);
             } catch (err) {
                 console.error('Failed to hydrate session from DB:', err);
                 if (!cancelled) {
@@ -178,7 +188,7 @@ function AnalysisContent() {
             }
         })();
         return () => { cancelled = true; };
-    }, [sessionIdParam, user, authLoading]);
+    }, [sessionIdParam, recordingIdParam, user, authLoading]);
 
     // ── Transcript-completion polling ───────────────────────────────────────
     //
@@ -226,7 +236,7 @@ function AnalysisContent() {
             try {
                 const data = await getSessionDetails(sessionIdParam);
                 if (cancelled) return;
-                if (data && data.user_id && data.user_id !== user.id) return;
+                if (!data || data.user_id !== user.id) return;
                 const questionRows: DbQuestionRow[] = (data?.questions as DbQuestionRow[]) || [];
                 const questionMap = new Map<string, DbQuestionRow>(questionRows.map(q => [q.id, q]));
                 const rows: DbRecordingRow[] = ((data?.recordings as DbRecordingRow[]) || []).slice().sort((a, b) => {
@@ -382,11 +392,9 @@ function AnalysisContent() {
                             communicationScore: analysis.communication_score,
                             deliveryScore: analysis.delivery_score,
                             summary: analysis.summary,
-                            communicationPatterns: analysis.communication_patterns,
                             strengths: analysis.strengths,
-                            improvements: analysis.improvements,
                             nextSteps: analysis.next_steps,
-                            diagnosis: analysis.diagnosis ?? undefined,
+                            ...safeFeedbackDetails({ diagnosis: analysis.diagnosis, communicationPatterns: analysis.communication_patterns, improvements: analysis.improvements }, selectedRecording.transcript, selectedRecording.duration),
                             metrics: {
                                 wordsPerMinute: selectedRecording.wordsPerMinute || 0,
                                 fillerWordCount: selectedRecording.fillerWordCount || 0,
@@ -442,7 +450,7 @@ function AnalysisContent() {
                 if (response.ok) {
                     const data: GenerateFeedbackResponse = await response.json();
                     if (cancelled) return;
-                    setFeedback(data);
+                    setFeedback({ ...data, ...safeFeedbackDetails(data, selectedRecording.transcript, selectedRecording.duration) });
                     setFeedbackError(null);
 
                     // Save analysis to database if we have a recording ID
@@ -709,6 +717,8 @@ function AnalysisContent() {
                                             {process.env.NEXT_PUBLIC_DIAGNOSIS_CALLOUT === 'true' && (
                                                 <DiagnosisCallout
                                                     diagnosis={feedback.diagnosis}
+                                                    transcript={selectedRecording.transcript ?? ''}
+                                                    duration={selectedRecording.duration}
                                                     onPracticeClick={() => {
                                                         repeatSession();
                                                         router.push('/interview');

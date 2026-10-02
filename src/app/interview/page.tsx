@@ -1,5 +1,7 @@
 'use client';
 
+import { ACCOUNT_CHANGE_EVENT } from '@/utils/accountRecovery';
+
 import { apiFetch } from '@/utils/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -115,8 +117,12 @@ export default function InterviewPage() {
                 return '';
             }
         };
+        const preventAccountChange = (event: Event) => {
+            if (pendingTranscriptionsRef.current > 0 || recordingInProgressRef.current || savingRecordingRef.current || pendingCaptureRef.current) event.preventDefault();
+        };
         window.addEventListener('beforeunload', handler);
-        return () => window.removeEventListener('beforeunload', handler);
+        window.addEventListener(ACCOUNT_CHANGE_EVENT, preventAccountChange);
+        return () => { window.removeEventListener('beforeunload', handler); window.removeEventListener(ACCOUNT_CHANGE_EVENT, preventAccountChange); };
     }, []);
 
     // Mark session as completed when user closes/leaves the tab mid-session

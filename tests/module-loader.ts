@@ -14,7 +14,7 @@ export function loadSource<T>(file: string, mocks: Record<string, unknown>): T {
     const sourceModule = { exports: {} as unknown };
     cache.set(path, sourceModule);
     const source = ts.transpileModule(readFileSync(path, 'utf8'), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true, jsx: ts.JsxEmit.ReactJSX },
     }).outputText;
     const require = (id: string): unknown => {
       if (Object.hasOwn(mocks, id)) return mocks[id];

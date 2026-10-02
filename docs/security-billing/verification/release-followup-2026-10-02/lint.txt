@@ -1,0 +1,32 @@
+
+/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/app/api/health/route.ts
+  42:27  warning  '_request' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/app/pricing/page.tsx
+  29:3  warning  Unused eslint-disable directive (no problems were reported from 'react-hooks/exhaustive-deps')
+  32:6  warning  React Hook useEffect has missing dependencies: 'refreshSubscriptionStatus' and 'user'. Either include them or remove the dependency array  react-hooks/exhaustive-deps
+
+/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/app/session/[id]/page.tsx
+  251:47  warning  'idx' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/components/Controls.tsx
+  16:126  warning  'recordingDuration' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/components/Prompter.tsx
+  12:7   warning  'formatDuration' is assigned a value but never used     @typescript-eslint/no-unused-vars
+  18:46  warning  'isRecording' is defined but never used                 @typescript-eslint/no-unused-vars
+  18:59  warning  'recordingDuration' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/context/InterviewContext.tsx
+  122:8  warning  React Hook useEffect has a missing dependency: 'sessionContext'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/services/emotionAnalyzer.ts
+  106:36  warning  '_base64Image' is defined but never used  @typescript-eslint/no-unused-vars
+  125:40  warning  '_videoPath' is defined but never used    @typescript-eslint/no-unused-vars
+  143:40  warning  '_videoBlob' is defined but never used    @typescript-eslint/no-unused-vars
+
+/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review/src/services/faceTracker.ts
+  216:18  warning  'err' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 13 problems (0 errors, 13 warnings)
+  0 errors and 1 warning potentially fixable with the `--fix` option.

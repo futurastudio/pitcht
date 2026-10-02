@@ -1,0 +1,63 @@
+▲ Next.js 16.3.8 (Turbopack)
+[@sentry/nextjs] DEPRECATION WARNING: disableLogger is deprecated and will be removed in a future version. Use webpack.treeshake.removeDebugLogging instead. (Not supported with Turbopack.)
+⚠ Warning: Next.js ignored package-lock.json in /Users/joseartigas because it is outside the current Git repository (/Users/joseartigas/Documents/Codex/2026-10-01/task/pitcht-security-review).
+ To use this directory, set `turbopack.root` in your Next.js config.
+
+✓ Running next.config.ts took 450ms
+- Experiments (use with caution):
+  · clientTraceMetadata
+
+  Creating an optimized production build ...
+[@sentry/nextjs] DEPRECATION WARNING: disableLogger is deprecated and will be removed in a future version. Use webpack.treeshake.removeDebugLogging instead. (Not supported with Turbopack.)
+✓ Compiled successfully in 2.3s
+  Running next.config.js provided runAfterProductionCompile ...
+✓ Completed runAfterProductionCompile in 334ms
+  Running TypeScript ...
+  Finished TypeScript in 5.3s ...
+  Collecting page data using 7 workers ...
+  Generating static pages using 7 workers (0/34) ...
+  Generating static pages using 7 workers (8/34)
+  Generating static pages using 7 workers (16/34)
+  Generating static pages using 7 workers (25/34)
+✓ Generating static pages using 7 workers (34/34) in 408ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /analysis
+├ ƒ /api/complete-session
+├ ƒ /api/create-checkout-session
+├ ƒ /api/create-portal-session
+├ ƒ /api/create-practice-session
+├ ƒ /api/cron/billing-analytics
+├ ƒ /api/cron/outcome-ping
+├ ƒ /api/cron/sms-check
+├ ƒ /api/delete-account
+├ ƒ /api/generate-feedback
+├ ƒ /api/generate-questions
+├ ƒ /api/health
+├ ƒ /api/log-outcome
+├ ƒ /api/notify-signup
+├ ƒ /api/practice-access
+├ ƒ /api/sms/inbound
+├ ƒ /api/sms/send
+├ ƒ /api/transcribe
+├ ƒ /api/verify-subscription
+├ ƒ /api/waitlist
+├ ƒ /api/webhooks/stripe
+├ ○ /auth/callback
+├ ○ /auth/reset-password
+├ ○ /history
+├ ○ /interview
+├ ƒ /outcome/[token]
+├ ○ /pricing
+├ ○ /privacy
+├ ƒ /session/[id]
+├ ○ /settings
+├ ○ /success
+└ ○ /terms
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand

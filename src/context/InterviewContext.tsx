@@ -8,7 +8,8 @@ import { createSession, saveRecording as saveRecordingToSupabase } from '@/servi
 import type { RecordingSaveCheckpoint } from '@/services/sessionManager';
 import type { User } from '@supabase/supabase-js';
 import type { Question, SessionType } from '@/types/interview';
-import { recordingMetadata, MAX_TRANSCRIPTION_BYTES } from '@/utils/recordingContract';
+import { readRecovery, writeRecovery, clearRecovery, ACCOUNT_CHANGE_EVENT } from '@/utils/accountRecovery';
+import { MAX_TRANSCRIPTION_BYTES } from '@/utils/recordingContract';
 
 export interface Recording {
     questionId: string;
@@ -55,43 +56,28 @@ interface InterviewContextType {
 const InterviewContext = createContext<InterviewContextType | undefined>(undefined);
 
 export function InterviewProvider({ children }: { children: ReactNode }) {
-    const { user } = useAuth();
-    const [sessionType, setSessionType] = useState<string | null>(null);
-    const [sessionContext, setSessionContext] = useState<string>('');
-    const [recordings, setRecordings] = useState<Recording[]>([]);
-    const [questions, setQuestions] = useState<Question[]>([]);
-    const [sessionId, setSessionId] = useState<string | null>(null);
+    const { user, loading } = useAuth();
+    // Remount the entire private view on identity changes, including pending page effects/media.
+    return <AccountInterviewProvider key={loading ? 'auth-loading' : user?.id ?? 'signed-out'} user={loading ? null : user}>{children}</AccountInterviewProvider>;
+}
+
+function AccountInterviewProvider({ children, user }: { children: ReactNode; user: User | null }) {
+    const [saved] = useState(() => {
+        try { return user && typeof window !== 'undefined' ? readRecovery(localStorage, user.id) : null; }
+        catch { return null; }
+    });
+    const [sessionType, setSessionType] = useState<string | null>(saved?.sessionType ?? null);
+    const [sessionContext, setSessionContext] = useState(saved?.sessionContext ?? '');
+    const [recordings, setRecordings] = useState<Recording[]>(saved?.recordings ?? []);
+    const [questions, setQuestions] = useState<Question[]>(saved?.questions ?? []);
+    const [sessionId, setSessionId] = useState<string | null>(saved?.sessionId ?? null);
     const isCreatingSessionRef = useRef(false);
-    const [storageLoaded, setStorageLoaded] = useState(false);
 
-    // Load from localStorage on mount (fallback)
     useEffect(() => {
-        const savedSession = localStorage.getItem('pitcht_session_type');
-        const savedContext = localStorage.getItem('pitcht_session_context');
-        const savedRecordings = localStorage.getItem('pitcht_recordings');
-        const savedQuestions = localStorage.getItem('pitcht_questions');
-        const savedSessionId = localStorage.getItem('pitcht_session_id');
-
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- batch setState from localStorage on mount is intentional (runs once, no cascading renders)
-        if (savedSession) setSessionType(savedSession);
-        if (savedContext) setSessionContext(savedContext);
-        if (savedRecordings) {
-            try { setRecordings(JSON.parse(savedRecordings).map(recordingMetadata)); } catch { /* Invalid recovery metadata cannot restore media. */ }
-        }
-        if (savedQuestions) setQuestions(JSON.parse(savedQuestions));
-        if (savedSessionId) setSessionId(savedSessionId);
-        setStorageLoaded(true);
-    }, []);
-
-    // Save to localStorage whenever state changes (fallback/backup)
-    useEffect(() => {
-        if (!storageLoaded) return;
-        if (sessionType) localStorage.setItem('pitcht_session_type', sessionType);
-        if (sessionContext) localStorage.setItem('pitcht_session_context', sessionContext);
-        localStorage.setItem('pitcht_recordings', JSON.stringify(recordings.map(recordingMetadata)));
-        localStorage.setItem('pitcht_questions', JSON.stringify(questions));
-        if (sessionId) localStorage.setItem('pitcht_session_id', sessionId);
-    }, [sessionType, sessionContext, recordings, questions, sessionId, storageLoaded]);
+        if (!user) return;
+        try { writeRecovery(localStorage, user.id, { sessionType, sessionContext, recordings, questions, sessionId }); }
+        catch { /* Browser storage can be unavailable; captured bytes remain in memory. */ }
+    }, [sessionType, sessionContext, recordings, questions, sessionId, user]);
 
     useEffect(() => {
         const warn = (event: BeforeUnloadEvent) => {
@@ -99,8 +85,12 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
                 event.preventDefault(); event.returnValue = '';
             }
         };
+        const preventAccountChange = (event: Event) => {
+            if (recordings.some(recording => recording.videoBlob instanceof Blob && !recording.recordingId)) event.preventDefault();
+        };
         window.addEventListener('beforeunload', warn);
-        return () => window.removeEventListener('beforeunload', warn);
+        window.addEventListener(ACCOUNT_CHANGE_EVENT, preventAccountChange);
+        return () => { window.removeEventListener('beforeunload', warn); window.removeEventListener(ACCOUNT_CHANGE_EVENT, preventAccountChange); };
     }, [recordings]);
 
     // Create Supabase session when questions are generated
@@ -235,11 +225,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         setRecordings([]);
         setQuestions([]);
         setSessionId(null);
-        localStorage.removeItem('pitcht_session_type');
-        localStorage.removeItem('pitcht_session_context');
-        localStorage.removeItem('pitcht_recordings');
-        localStorage.removeItem('pitcht_questions');
-        localStorage.removeItem('pitcht_session_id');
+        try { if (user) clearRecovery(localStorage, user.id); } catch { /* Storage may be disabled. */ }
     };
 
     const repeatSession = (overrideConfig?: { type: string; context: string; questions: Question[] }) => {

@@ -1,5 +1,7 @@
 'use client';
 
+import { ACCOUNT_CHANGE_EVENT, UNSAVED_ACCOUNT_MESSAGE } from '@/utils/accountRecovery';
+
 import { apiFetch } from '@/utils/api';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -165,6 +167,10 @@ export default function SettingsPage() {
       return;
     }
 
+    if (!window.dispatchEvent(new Event(ACCOUNT_CHANGE_EVENT, { cancelable: true }))) {
+      toast.error(UNSAVED_ACCOUNT_MESSAGE);
+      return;
+    }
     setIsDeleting(true);
     try {
       // Get current session token from Supabase
@@ -197,7 +203,7 @@ export default function SettingsPage() {
         router.push('/');
       } else {
         console.error('Delete account error:', data.error);
-        toast.error(data.message || 'Failed to delete account. Please try again or contact support.');
+        toast.error(data.error || data.message || 'Failed to delete account. Please try again or contact support.');
         setIsDeleting(false);
         setShowDeleteConfirm(false);
         setDeleteConfirmText('');
@@ -532,7 +538,7 @@ export default function SettingsPage() {
             <div className="pt-6 border-t border-red-500/30">
               <h3 className="text-lg font-semibold text-red-400 mb-2">Delete Account</h3>
               <p className="text-white/60 text-sm mb-4">
-                Permanently delete your account and all associated data. This action cannot be undone.
+                Permanently delete your account and saved recordings, and cancel linked subscriptions. This action cannot be undone.
               </p>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
@@ -580,9 +586,10 @@ export default function SettingsPage() {
               <ul className="list-disc list-inside space-y-2 text-white/60 text-sm ml-4">
                 <li>All your practice sessions and recordings</li>
                 <li>All video files and transcripts</li>
-                <li>Your subscription and billing history</li>
+                <li>Your subscription records in Pitcht</li>
                 <li>Your account and profile data</li>
               </ul>
+              <p className="text-white/60 text-sm">Linked subscriptions will be canceled. Payment records remain with Stripe.</p>
               <p className="text-red-400 font-semibold inline-flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4" strokeWidth={1.75} />
                 This action cannot be undone!

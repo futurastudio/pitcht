@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { generateFeedback } from '@/services/claude';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
 import type { SessionType } from '@/types/interview';
+import { safeFeedbackDetails } from '@/utils/feedbackValidation';
 import type { Diagnosis } from '@/utils/diagnosisTaxonomy';
 import { authenticate, fail, readJson, requireRecordingId } from '@/server/http';
 import { ApiError } from '@/server/errors';
@@ -79,8 +80,9 @@ export async function POST(request: Request) {
     const savedResponse = (saved: Record<string, unknown>) => {
       return NextResponse.json({ overallScore: saved.overall_score, contentScore: saved.content_score,
         communicationScore: saved.communication_score, deliveryScore: saved.delivery_score, summary: saved.summary,
-        communicationPatterns: saved.communication_patterns, strengths: saved.strengths, improvements: saved.improvements,
-        nextSteps: saved.next_steps, diagnosis: saved.diagnosis ?? undefined, metrics, generatedAt: saved.created_at });
+        strengths: saved.strengths,
+        nextSteps: saved.next_steps, metrics, generatedAt: saved.created_at,
+        ...safeFeedbackDetails({ diagnosis: saved.diagnosis, communicationPatterns: saved.communication_patterns, improvements: saved.improvements }, recording.transcript ?? '', recording.duration) });
     };
     if (saved) return savedResponse(saved);
     if (typeof recording.transcript !== 'string' || !recording.transcript.trim()) throw new ApiError(409, 'Transcript is not ready.');
@@ -90,11 +92,12 @@ export async function POST(request: Request) {
     if (cacheError) throw new Error('Analysis lookup failed');
     if (completed) return savedResponse(completed);
     // Client legacy fields remain accepted; saved session/answer context is authoritative.
-    const feedback = await generateFeedback({ sessionType: session.session_type as SessionType,
+    const generated = await generateFeedback({ sessionType: session.session_type as SessionType,
       question: question.question_text, transcript: recording.transcript, context: session.context ?? '',
       analysisData: { wordsPerMinute: speech.wordsPerMinute, fillerWordCount: speech.fillerWordCount,
         eyeContactPercentage: metrics.eyeContactPercentage, dominantEmotion: metrics.dominantEmotion, presenceScore: metrics.presenceScore } });
-    validateFeedback(feedback);
+    validateFeedback(generated);
+    const feedback = { ...generated, ...safeFeedbackDetails(generated, recording.transcript, recording.duration) };
     const response: GenerateFeedbackResponse = { ...feedback, metrics, generatedAt: new Date().toISOString() };
     const { data, error } = await getAdmin().from('analyses').insert({
       recording_id: id, overall_score: feedback.overallScore, content_score: feedback.contentScore ?? null,

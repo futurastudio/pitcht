@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { loadSource, USER_A, RECORDING } from './module-loader';
 import { CLIENT_UPGRADE_MESSAGE, MAX_TRANSCRIPTION_BYTES, recordingMetadata, transcriptionForm } from '../src/utils/recordingContract';
+import { safeFeedbackDetails } from '../src/utils/feedbackValidation';
 import { supportedAudioMime } from '../src/utils/audioRecovery';
 
 for (const endpoint of ['transcribe', 'generate-feedback']) {
@@ -78,7 +79,7 @@ test('changing answer cancels the old video response before it can overwrite the
 test('changing answer cancels the old feedback response and loading state', async () => {
   const pending: Array<(value: unknown) => void> = []; const rendered: unknown[] = []; const loading: unknown[] = [];
   const query = { select: () => query, eq: () => query, order: () => query, limit: () => new Promise(resolve => pending.push(resolve)) };
-  const state = { selectedRecording: { recordingId: 'A', transcript: 'A' }, setFeedback: (v: unknown) => rendered.push(v), setFeedbackError: () => {}, setIsGeneratingFeedback: (v: unknown) => loading.push(v), require: () => ({ supabase: { from: () => query } }), console };
+  const state = { safeFeedbackDetails, selectedRecording: { recordingId: 'A', transcript: 'A' }, setFeedback: (v: unknown) => rendered.push(v), setFeedbackError: () => {}, setIsGeneratingFeedback: (v: unknown) => loading.push(v), require: () => ({ supabase: { from: () => query } }), console };
   const effect = runInNewContext(pageEffect('const loadOrGenerateFeedback'), state) as () => () => void;
   const cleanup = effect(); await flush(); cleanup(); state.selectedRecording = { recordingId: 'B', transcript: 'B' }; effect(); await flush();
   pending[1]({ data: [{ summary: 'feedback-B' }] }); await flush();
