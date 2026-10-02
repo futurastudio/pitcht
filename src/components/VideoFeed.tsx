@@ -6,6 +6,7 @@ import { FaceTracker } from '@/services/faceTracker';
 import type { EyeTrackingMetrics } from '@/services/faceTracker';
 import { useCameraStatus } from '@/context/CameraContext';
 import { trackEvent, AnalyticsEvents } from '@/utils/analytics';
+import { AUDIO_BITS_PER_SECOND, supportedAudioMime } from '@/utils/audioRecovery';
 
 type Browser = 'chrome' | 'safari' | 'firefox' | 'other';
 type PermissionPromptTrigger = 'initial' | 'retry';
@@ -280,7 +281,8 @@ export default function VideoFeed() {
 
             // Audio-only recorder (smaller files for Whisper transcription)
             const audioStream = new MediaStream(stream.getAudioTracks());
-            const audioRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
+            const audioMime = supportedAudioMime(mime => MediaRecorder.isTypeSupported(mime));
+            const audioRecorder = new MediaRecorder(audioStream, { ...(audioMime ? { mimeType: audioMime } : {}), audioBitsPerSecond: AUDIO_BITS_PER_SECOND });
             audioRecorder.ondataavailable = (e) => {
                 if (e.data.size > 0) audioChunksRef.current.push(e.data);
             };
@@ -392,7 +394,7 @@ export default function VideoFeed() {
                     };
 
                     mediaRecorderRef.current.onstop = () => {
-                        videoBlob = new Blob(chunksRef.current, { type: 'video/webm' });
+                        videoBlob = new Blob(chunksRef.current, { type: mediaRecorderRef.current?.mimeType || 'video/webm' });
                         try {
                             const metrics = tracker.getMetrics();
                             if (metrics && metrics.totalFrames > 0) eyeTracking = metrics;
@@ -405,7 +407,7 @@ export default function VideoFeed() {
 
                     if (audioRecorderRef.current && audioRecorderRef.current.state === 'recording') {
                         audioRecorderRef.current.onstop = () => {
-                            audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                            audioBlob = new Blob(audioChunksRef.current, { type: audioRecorderRef.current?.mimeType || 'audio/webm' });
                             checkBothStopped();
                         };
                     } else {

@@ -2,6 +2,7 @@ import 'server-only';
 import { NextResponse } from 'next/server';
 import { getAdmin } from './clients';
 import { ApiError } from './errors';
+import { CLIENT_UPGRADE_MESSAGE } from '@/utils/recordingContract';
 
 export async function authenticate(request: Request) {
   const match = /^Bearer ([^\s]+)$/i.exec(request.headers.get('authorization') ?? '');
@@ -37,4 +38,11 @@ export function requireUuid(value: unknown, label: string): string {
     throw new ApiError(400, `Invalid ${label}.`);
   }
   return value;
+}
+
+export function requireRecordingId(value: unknown): string {
+  if (value === undefined || value === null || value === '') {
+    throw new ApiError(409, CLIENT_UPGRADE_MESSAGE, 'client_upgrade_required');
+  }
+  return requireUuid(value, 'recording ID');
 }

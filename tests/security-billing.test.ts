@@ -138,7 +138,7 @@ test('valid paid legacy feedback fields remain accepted; owned stored context wi
 test('feedback requires recording ownership; malformed output is not persisted', async () => {
   const tables=fixtures(); tables.recordings[0].transcript='Saved answer.';
   const api=route('src/app/api/generate-feedback/route.ts',tables,{ '@/services/claude': { generateFeedback:async()=>({overallScore:999,summary:'invalid'}) } });
-  assert.equal((await api.POST(request({ transcript:'unbound' }))).status,400);
+  assert.equal((await api.POST(request({ transcript:'unbound' }))).status,409);
   assert.equal((await api.POST(request({recordingId:RECORDING}))).status,502); assert.equal(tables.analyses.length,0);
 });
 
@@ -201,17 +201,66 @@ test('feedback and transcription recheck saved results after delayed reservation
 
 test('durable analytics await ingestion acknowledgement, preserve stable identity and fail safely', async () => {
   process.env.NEXT_PUBLIC_POSTHOG_KEY='phc_offline_fixture';
-  let status=400;let payload: Row={};
+  const occurredAt='2026-09-29T12:34:56.789Z';
+  let status=400;let payload: Row={};let calls=0;
   const api=loadSource<typeof import('../src/utils/posthog-server')>('src/utils/posthog-server.ts',{
-    __fetch:async(_url:URL,options:{body:string})=>{payload=JSON.parse(options.body);return new Response(JSON.stringify({status:status===200?1:0}),{status});},
+    __fetch:async(_url:URL,options:{body:string})=>{calls++;payload=JSON.parse(options.body);return new Response(JSON.stringify({status:status===200?1:0}),{status});},
   });
-  assert.equal(await api.trackDurableEvent('checkout_completed',USER_A,{},'checkout:cs_synthetic'),false);
+  assert.equal(await api.trackDurableEvent('checkout_completed',USER_A,{},'checkout:cs_synthetic',occurredAt),false);
   status=200;
-  assert.equal(await api.trackDurableEvent('checkout_completed',USER_A,{},'checkout:cs_synthetic'),true);const uuid=payload.uuid;
-  assert.equal(await api.trackDurableEvent('checkout_completed',USER_A,{},'checkout:cs_synthetic'),true);
+  assert.equal(await api.trackDurableEvent('checkout_completed',USER_A,{},'checkout:cs_synthetic',occurredAt),true);const uuid=payload.uuid;
+  assert.equal(await api.trackDurableEvent('checkout_completed',USER_A,{},'checkout:cs_synthetic',occurredAt),true);
   assert.equal(payload.uuid,uuid);assert.equal((payload.properties as Row).$insert_id,'checkout:cs_synthetic');
+  assert.equal(payload.timestamp,occurredAt);
+  const priorCalls=calls;
+  for(const invalid of ['', 'invalid', undefined]) {
+    assert.equal(await api.trackDurableEvent('checkout_completed',USER_A,{},'checkout:cs_synthetic',invalid as string),false);
+  }
+  assert.equal(calls,priorCalls);
   const failing=loadSource<typeof import('../src/utils/posthog-server')>('src/utils/posthog-server.ts',{__fetch:async()=>{throw new Error('offline ingestion failure');}});
-  assert.equal(await failing.trackDurableEvent('checkout_completed',USER_A,{},'checkout:cs_synthetic'),false);
+  assert.equal(await failing.trackDurableEvent('checkout_completed',USER_A,{},'checkout:cs_synthetic',occurredAt),false);
+});
+
+test('outbox delivery forwards original creation time and acknowledges only a successful send', async () => {
+  const row={id:'checkout:cs_time',subscription_id:'sub_owned',user_id:USER_A,properties:{},created_at:'2026-09-29T12:34:56.789Z'};
+  const tables={billing_analytics_outbox:[row]} as Record<string,Row[]>;
+  const db=mockDb(tables,()=>null);
+  let observed:unknown[]=[];
+  const service=loadSource<typeof import('../src/server/billing')>('src/server/billing.ts',{
+    './clients':{getAdmin:()=>db},'@/utils/posthog-server':{trackDurableEvent:async(...args:unknown[])=>{observed=args;return true;}},
+  });
+  await service.deliverPurchaseEvents('sub_owned');
+  assert.deepEqual(observed,['checkout_completed',USER_A,{},row.id,row.created_at]);
+  assert.equal(typeof tables.billing_analytics_outbox[0].delivered_at,'string');
+});
+
+test('outbox retry after lost database acknowledgement sends the identical durable payload', async () => {
+  process.env.NEXT_PUBLIC_POSTHOG_KEY='phc_offline_fixture';
+  const tables={billing_analytics_outbox:[{id:'checkout:cs_uncertain',subscription_id:'sub_owned',user_id:USER_A,properties:{amount_total:1000},created_at:'2026-09-29T12:34:56.789Z'}]} as Record<string,Row[]>;
+  const base=mockDb(tables,()=>null);
+  let failAcknowledgement=true;
+  const db={...base,from:(table:string)=>{
+    const query=base.from(table);
+    const update=query.update;
+    query.update=(value:Row)=>{
+      if(!failAcknowledgement)return update(value);
+      const failed={eq:()=>failed,is:()=>failed,select:async()=>({data:null,error:{code:'08006'}})};
+      return failed as unknown as typeof query;
+    };
+    return query;
+  }};
+  const sent:Row[]=[];
+  const service=loadSource<typeof import('../src/server/billing')>('src/server/billing.ts',{
+    './clients':{getAdmin:()=>db},
+    __fetch:async(_url:URL,options:{body:string})=>{sent.push(JSON.parse(options.body));return new Response('{"status":1}',{status:200});},
+  });
+  await service.deliverPurchaseEvents('sub_owned');
+  assert.equal(tables.billing_analytics_outbox[0].delivered_at,undefined);
+  failAcknowledgement=false;
+  await service.deliverPurchaseEvents('sub_owned');
+  assert.equal(sent.length,2);assert.deepEqual(sent[0],sent[1]);
+  assert.equal(sent[1].timestamp,'2026-09-29T12:34:56.789Z');
+  assert.equal(typeof tables.billing_analytics_outbox[0].delivered_at,'string');
 });
 
 test('analytics delivery failure keeps outbox pending and cannot fail verified paid access', async () => {

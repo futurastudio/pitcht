@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/services/supabase';
 import { convertAnonymousToRealAccount } from '@/services/auth';
+import { notifyNewSignup } from '@/services/signupNotification';
 import { canUserStartSession } from '@/services/subscriptionManager';
 import { identifyUser, trackEvent, AnalyticsEvents } from '@/utils/analytics';
 import type { User } from '@supabase/supabase-js';
@@ -87,6 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // before setUser()'s async state update propagates to refreshSubscriptionStatus().
         if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
           refreshSubscriptionStatus(session.user.id);
+          // Also covers email confirmation after signUp returned without a session.
+          void notifyNewSignup(session);
         }
         if (event === 'SIGNED_IN') {
           trackEvent(AnalyticsEvents.LOGIN_COMPLETED, { method: 'email' });
@@ -157,19 +160,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
-async function sendSignupNotification(userId: string, email: string, signupMethod: 'email' | 'google') {
-  try {
-    await fetch('/api/notify-signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, email, signupMethod }),
-    });
-  } catch (err) {
-    // Silent fail — don't block signup on notification error
-    console.error('[auth] Signup notification failed:', err);
-  }
-}
-
   const signUp = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signUp({
       email,
@@ -192,9 +182,8 @@ async function sendSignupNotification(userId: string, email: string, signupMetho
 
     setUser(data.user);
 
-    // Notify on new signup
+    // Track the signup separately from best-effort welcome delivery.
     if (data.user?.id && data.user?.email) {
-      await sendSignupNotification(data.user.id, data.user.email, 'email');
       identifyUser(data.user.id, { email: data.user.email, signup_method: 'email' });
       trackEvent(AnalyticsEvents.SIGNUP_COMPLETED, { method: 'email' });
     }

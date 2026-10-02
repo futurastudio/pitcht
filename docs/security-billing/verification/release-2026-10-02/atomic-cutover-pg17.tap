@@ -1,0 +1,82 @@
+TAP version 13
+# Subtest: Cutover source: reviewed RPCs remain identical except explicit legacy admission
+ok 1 - Cutover source: reviewed RPCs remain identical except explicit legacy admission
+  ---
+  duration_ms: 33.856125
+  type: 'test'
+  ...
+# Subtest: Cutover: preserves records, canonical billing, owner grant and all completed usage
+ok 2 - Cutover: preserves records, canonical billing, owner grant and all completed usage
+  ---
+  duration_ms: 130.588917
+  type: 'test'
+  ...
+# Subtest: Cutover: completed third session can finish but cannot start a fourth or reset usage by deletion
+ok 3 - Cutover: completed third session can finish but cannot start a fourth or reset usage by deletion
+  ---
+  duration_ms: 126.809792
+  type: 'test'
+  ...
+# Subtest: Cutover: fixed selection caps active reservations and denies recent excluded/half-created/future work
+ok 4 - Cutover: fixed selection caps active reservations and denies recent excluded/half-created/future work
+  ---
+  duration_ms: 237.824959
+  type: 'test'
+  ...
+# Subtest: Cutover: maximum three eligible completions, fixed expiry, immutable marker, one-shot rerun
+ok 5 - Cutover: maximum three eligible completions, fixed expiry, immutable marker, one-shot rerun
+  ---
+  duration_ms: 143.913584
+  type: 'test'
+  ...
+# Subtest: Cutover: queued old completion is denied, recording insert resumes, and history deletion retains captured usage
+ok 6 - Cutover: queued old completion is denied, recording insert resumes, and history deletion retains captured usage
+  ---
+  duration_ms: 211.289708
+  type: 'test'
+  ...
+# Subtest: Cutover: a completion committed before lock acquisition enters the atomic backfill
+ok 7 - Cutover: a completion committed before lock acquisition enters the atomic backfill
+  ---
+  duration_ms: 178.579792
+  type: 'test'
+  ...
+# Subtest: Cutover: lock timeout leaves no schema/permission fragment
+ok 8 - Cutover: lock timeout leaves no schema/permission fragment
+  ---
+  duration_ms: 5072.922958
+  type: 'test'
+  ...
+# Subtest: Cutover: unexpected entitlement columns and inherited writes abort atomically
+ok 9 - Cutover: unexpected entitlement columns and inherited writes abort atomically
+  ---
+  duration_ms: 90.457584
+  type: 'test'
+  ...
+# Subtest: Cutover: a non-bypass owner under FORCE RLS cannot silently backfill filtered history
+ok 10 - Cutover: a non-bypass owner under FORCE RLS cannot silently backfill filtered history
+  ---
+  duration_ms: 84.93425
+  type: 'test'
+  ...
+# Subtest: Cutover: freshly verified paid and trial users can process excluded legacy recordings
+ok 11 - Cutover: freshly verified paid and trial users can process excluded legacy recordings
+  ---
+  duration_ms: 113.313833
+  type: 'test'
+  ...
+# Subtest: Cutover: final private permissions, canonical Stripe revision/outbox and concurrent admission remain intact
+ok 12 - Cutover: final private permissions, canonical Stripe revision/outbox and concurrent admission remain intact
+  ---
+  duration_ms: 156.49375
+  type: 'test'
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6855.775958

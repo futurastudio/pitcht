@@ -35,6 +35,27 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+export function recordingVideoPath(userId: string, sessionId: string, mime: string, captureId: string): string {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(captureId)) {
+    throw new Error('Invalid recording capture ID. Keep this tab open to recover your video.');
+  }
+  const extensions: Record<string, string> = { 'video/webm': 'webm', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/x-matroska': 'mkv' };
+  const extension = extensions[mime.split(';')[0].trim().toLowerCase()];
+  if (!extension) throw new Error('Unsupported video format. Download your captured original before recording again.');
+  return `${userId}/${sessionId}/${captureId}.${extension}`;
+}
+
+async function sameVideoBytes(original: Blob, saved: Blob): Promise<boolean> {
+  if (original.size !== saved.size) return false;
+  // Bounded comparison buffers: only uncertain uploads incur this authenticated read.
+  for (let offset = 0; offset < original.size; offset += 64 * 1024) {
+    const [a, b] = await Promise.all([original.slice(offset, offset + 64 * 1024).arrayBuffer(), saved.slice(offset, offset + 64 * 1024).arrayBuffer()]);
+    const bytes = new Uint8Array(b);
+    if (new Uint8Array(a).some((value, index) => value !== bytes[index])) return false;
+  }
+  return true;
+}
+
 /**
  * Upload video to Supabase Storage
  * @param userId - User ID (for organizing files)
@@ -45,7 +66,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export async function uploadVideo(
   userId: string,
   sessionId: string,
-  videoBlob: Blob
+  videoBlob: Blob,
+  captureId: string = crypto.randomUUID(),
 ): Promise<string> {
   // 1. Validate file type
   const validVideoTypes = [
@@ -55,7 +77,8 @@ export async function uploadVideo(
     'video/x-matroska', // .mkv files
   ];
 
-  if (!validVideoTypes.includes(videoBlob.type)) {
+  const contentType = videoBlob.type.split(';')[0].trim().toLowerCase();
+  if (!validVideoTypes.includes(contentType)) {
     console.error(`❌ Invalid file type: ${videoBlob.type}`);
     throw new Error(
       `Invalid file type: ${videoBlob.type}. Only video files are allowed (webm, mp4, mov, mkv).`
@@ -94,31 +117,27 @@ export async function uploadVideo(
     );
   }
 
-  const timestamp = Date.now();
-  const fileName = `${userId}/${sessionId}/${timestamp}.webm`;
+  const fileName = recordingVideoPath(userId, sessionId, contentType, captureId);
 
   console.log(`📤 Uploading video: ${fileName} (${fileSizeMB}MB)`);
 
-  const { data, error } = await supabase.storage
-    .from('recordings')
-    .upload(fileName, videoBlob, {
-      contentType: 'video/webm',
-      upsert: false,
-    });
-
-  if (error) {
-    console.error('Video upload error:', error);
-
-    // Provide helpful error messages
-    if (error.message.includes('exceeded the maximum allowed size')) {
-      throw new Error(`Video file is too large (${fileSizeMB}MB). Please keep recordings under 3 minutes.`);
+  try {
+    const { data, error } = await supabase.storage.from('recordings').upload(fileName, videoBlob, { contentType, upsert: false });
+    if (error) throw error;
+    if (data?.path !== fileName) throw new Error('Upload confirmation was incomplete.');
+  } catch {
+    // A timeout/duplicate may mean the upload committed. Verify this exact own path
+    // and exact bytes; never overwrite it or silently accept a different recording.
+    try {
+      const { data, error } = await supabase.storage.from('recordings').download(fileName);
+      if (!error && data && await sameVideoBytes(videoBlob, data)) return fileName;
+    } catch {
+      // An uncertain read remains a retryable save failure with the same capture ID.
     }
-
-    throw new Error(`Failed to upload video: ${error.message}`);
+    throw new Error('Could not confirm this video upload. Keep this tab open and retry saving, or download the captured original.');
   }
 
-  console.log(`✅ Video uploaded: ${data.path}`);
-  return data.path;
+  return fileName;
 }
 
 /**

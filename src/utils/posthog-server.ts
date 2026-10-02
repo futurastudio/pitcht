@@ -78,9 +78,14 @@ export async function flushPostHog() {
 }
 
 export async function trackDurableEvent(event: string, distinctId: string,
-  properties: Record<string, unknown>, insertId: string): Promise<boolean> {
+  properties: Record<string, unknown>, insertId: string, occurredAt: string): Promise<boolean> {
   const apiKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
   if (!apiKey) return false;
+  // Retries preserve the first durable purchase-record time, including cron sends.
+  // Missing/corrupt outbox time must stay pending rather than become a new event now.
+  const instant = typeof occurredAt === 'string' ? Date.parse(occurredAt) : NaN;
+  if (!Number.isFinite(instant)) return false;
+  const timestamp = new Date(instant).toISOString();
   try {
     // SDK capture/flush queue completion is not an ingestion acknowledgement.
     const url = new URL('/i/v0/e/', process.env.NEXT_PUBLIC_POSTHOG_HOST || 'https://us.i.posthog.com');
@@ -91,7 +96,7 @@ export async function trackDurableEvent(event: string, distinctId: string,
     const uuid = `${hash.slice(0,8)}-${hash.slice(8,12)}-5${hash.slice(13,16)}-${variant}${hash.slice(17,20)}-${hash.slice(20,32)}`;
     const response = await fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: apiKey, event, distinct_id: distinctId, uuid,
+      body: JSON.stringify({ api_key: apiKey, event, distinct_id: distinctId, uuid, timestamp,
         properties: { ...properties, distinct_id: distinctId, $insert_id: insertId } }),
       signal: AbortSignal.timeout(5_000),
     });

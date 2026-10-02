@@ -1,6 +1,8 @@
 'use client';
 
 import { apiFetch } from '@/utils/api';
+import { extractRecordingAudio } from '@/utils/audioRecovery';
+import { CLIENT_UPGRADE_MESSAGE, MAX_TRANSCRIPTION_BYTES, transcriptionForm } from '@/utils/recordingContract';
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -101,6 +103,21 @@ function AnalysisContent() {
     const [openExamples, setOpenExamples] = useState<Record<number, boolean>>({});
     const [isRetryingTranscription, setIsRetryingTranscription] = useState(false);
     const [retryError, setRetryError] = useState<string | null>(null);
+    const [retryProgress, setRetryProgress] = useState('');
+    const retryControllerRef = useRef<AbortController | null>(null);
+    // Independent of DB hydration: polling must not discard the prepared retry audio.
+    // Keep only the most recently prepared answer here (at most 4 MiB).
+    const retryAudioRef = useRef<{ id: string; audio: Blob } | null>(null);
+
+    useEffect(() => {
+        setRetryError(null);
+        setRetryProgress('');
+        setIsRetryingTranscription(false);
+        return () => {
+            retryControllerRef.current?.abort();
+            retryControllerRef.current = null;
+        };
+    }, [selectedRecording?.recordingId]);
     const [isVideoExpanded, setIsVideoExpanded] = useState(false);
     // Paywall state — gates "Practice Again" for free-tier users who've used their lifetime session.
     // Premium/trialing users skip this entirely. See runPracticeAgain below.
@@ -266,6 +283,8 @@ function AnalysisContent() {
 
 
     useEffect(() => {
+        let cancelled = false;
+        setVideoSrc(null);
         const loadVideo = async () => {
             if (!selectedRecording) {
                 setVideoSrc('');
@@ -281,6 +300,7 @@ function AnalysisContent() {
                     // Electron mode: Load video from local filesystem
                     // @ts-expect-error -- window.electron is injected by Electron preload script
                     const result = await window.electron.readVideo(selectedRecording.videoPath);
+                    if (cancelled) return;
                     if (result.success) {
                         setVideoSrc(result.data);
                     } else {
@@ -307,7 +327,7 @@ function AnalysisContent() {
 
                         if (error) {
                             console.error('Failed to load video from Supabase:', error);
-                        } else if (data) {
+                        } else if (!cancelled && data) {
                             setVideoSrc(data.signedUrl);
                         }
                     }
@@ -318,10 +338,15 @@ function AnalysisContent() {
         };
 
         loadVideo();
-    }, [selectedRecording]);
+        return () => { cancelled = true; };
+    }, [selectedRecording, user]);
 
     // Load existing feedback from database when recording is selected
     useEffect(() => {
+        let cancelled = false;
+        setFeedback(null);
+        setFeedbackError(null);
+        setIsGeneratingFeedback(false);
         const loadOrGenerateFeedback = async () => {
             if (!selectedRecording) {
                 setFeedback(null);
@@ -346,6 +371,7 @@ function AnalysisContent() {
                         .eq('recording_id', selectedRecording.recordingId)
                         .order('created_at', { ascending: false })
                         .limit(1);
+                    if (cancelled) return;
 
                     if (!error && analyses && analyses.length > 0) {
                         // Feedback already exists! Use it instead of regenerating
@@ -382,6 +408,7 @@ function AnalysisContent() {
                 }
             }
 
+            if (cancelled) return;
             // No existing feedback found - generate new feedback
             setIsGeneratingFeedback(true);
             setFeedbackError(null);
@@ -391,6 +418,7 @@ function AnalysisContent() {
                 const { supabase: supabaseClient } = await import('@/services/supabase');
                 const { data: { session } } = await supabaseClient.auth.getSession();
 
+                if (cancelled) return;
                 const response = await apiFetch('/api/generate-feedback', {
                     method: 'POST',
                     headers: {
@@ -413,6 +441,7 @@ function AnalysisContent() {
 
                 if (response.ok) {
                     const data: GenerateFeedbackResponse = await response.json();
+                    if (cancelled) return;
                     setFeedback(data);
                     setFeedbackError(null);
 
@@ -440,22 +469,25 @@ function AnalysisContent() {
                     }
                 } else {
                     const errorData = await response.json().catch(() => ({}));
+                    if (cancelled) return;
                     const errorMessage = errorData.error || 'Failed to generate feedback. Please try again.';
                     console.error('Failed to generate feedback:', errorMessage);
                     setFeedback(null);
                     setFeedbackError(errorMessage);
                 }
             } catch (error) {
+                if (cancelled) return;
                 console.error('Error generating feedback:', error);
                 const errorMessage = error instanceof Error ? error.message : 'Network error. Please check your connection and try again.';
                 setFeedback(null);
                 setFeedbackError(errorMessage);
             } finally {
-                setIsGeneratingFeedback(false);
+                if (!cancelled) setIsGeneratingFeedback(false);
             }
         };
 
         loadOrGenerateFeedback();
+        return () => { cancelled = true; };
     }, [selectedRecording, sessionType, sessionContext, feedbackRetryNonce]);
 
     // Retry failed feedback generation by re-running the effect above. Bumping
@@ -468,103 +500,66 @@ function AnalysisContent() {
         setFeedbackRetryNonce((n) => n + 1);
     };
 
-    // Retry transcription for a recording that failed to transcribe
+    // Retry from the audio held in this tab, or prepare an audio-only copy of the
+    // saved video. Neither path alters/deletes the original media or recording ID.
     const retryTranscription = async (recording: Recording) => {
-        if (!recording.recordingId || !recording.videoUrl) {
-            setRetryError('Cannot retry — recording data is missing.');
-            return;
-        }
-
+        const id = recording.recordingId;
+        if (!id) { setRetryError(CLIENT_UPGRADE_MESSAGE); return; }
+        retryControllerRef.current?.abort();
+        const controller = new AbortController();
+        retryControllerRef.current = controller;
+        const current = () => retryControllerRef.current === controller && !controller.signal.aborted;
         setIsRetryingTranscription(true);
         setRetryError(null);
-
+        setRetryProgress('Preparing audio…');
         try {
-            // Get a fresh signed URL for the video
-            const { supabase } = await import('@/services/supabase');
-            const { data: signedData, error: signedError } = await supabase.storage
-                .from('recordings')
-                .createSignedUrl(recording.videoUrl, 300); // 5 min expiry for download
-
-            if (signedError || !signedData?.signedUrl) {
-                throw new Error('Could not access recording file');
+            const retained = recording.audioBlob ?? contextRecordings.find(rec => rec.recordingId === id)?.audioBlob
+                ?? (retryAudioRef.current?.id === id ? retryAudioRef.current.audio : undefined);
+            let audio: Blob;
+            if (retained instanceof Blob && retained.size > 0 && retained.size <= MAX_TRANSCRIPTION_BYTES) {
+                audio = retained;
+            } else {
+                audio = await extractRecordingAudio(async () => {
+                    if (!user || !recording.videoUrl?.startsWith(`${user.id}/`)) throw new Error('Saved recording is unavailable.');
+                    const { supabase } = await import('@/services/supabase');
+                    const { data, error } = await supabase.storage.from('recordings').createSignedUrl(recording.videoUrl, 900);
+                    if (error || !data?.signedUrl) throw new Error('Could not access the saved recording.');
+                    return data.signedUrl;
+                }, {
+                    signal: controller.signal,
+                    onProgress: (seconds, total) => {
+                        if (current()) setRetryProgress(`Preparing audio: ${Math.floor(seconds)}s${total ? ` / ${Math.ceil(total)}s` : ''}. Keep this tab active.`);
+                    },
+                });
             }
-
-            // Download the video blob
-            const videoResponse = await fetch(signedData.signedUrl);
-            if (!videoResponse.ok) throw new Error('Failed to download recording');
-            const videoBlob = await videoResponse.blob();
-
-            // Extract audio (send the video blob — transcribe endpoint handles it)
-            const formData = new FormData();
-            formData.append('audio', videoBlob, 'recording.webm');
-            formData.append('recordingId', recording.recordingId!);
-            if (recording.questionText) {
-                formData.append('prompt', recording.questionText);
-            }
-
-            const { data: { session } } = await supabase.auth.getSession();
-            const transcribeResponse = await apiFetch('/api/transcribe', {
-                method: 'POST',
-                headers: {
-                    ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
-                },
-                body: formData,
+            if (!current()) return;
+            // Keep compressed bytes for another attempt if the network/API fails.
+            retryAudioRef.current = { id, audio };
+            updateRecording(id, { audioBlob: audio });
+            setHydratedRecordings(prev => prev?.map(rec => rec.recordingId === id ? { ...rec, audioBlob: audio } : rec) ?? prev);
+            setRetryProgress('Transcribing audio…');
+            const response = await apiFetch('/api/transcribe', {
+                method: 'POST', body: transcriptionForm(audio, id), signal: controller.signal,
             });
-
-            if (!transcribeResponse.ok) {
-                const err = await transcribeResponse.json().catch(() => ({}));
-                throw new Error(err.error || 'Transcription failed');
-            }
-
-            const result = await transcribeResponse.json();
+            const result = await response.json();
+            if (!current()) return;
+            if (!response.ok) throw new Error(result.error || 'Transcription failed. Your saved video is unchanged; retry when ready.');
             const { transcript, duration } = result;
-
-            if (!transcript) throw new Error('No transcript returned');
-
-            // Calculate speech metrics
+            if (!transcript) throw new Error('No transcript returned. Your saved video is unchanged.');
             const speechMetrics = analyzeSpeech(transcript, duration);
-
-            // Update database
-            const updateData = {
-                transcript,
-                duration: duration ? Math.round(duration) : undefined,
-                words_per_minute: speechMetrics.wordsPerMinute !== undefined ? Math.max(0, Math.min(400, Math.round(speechMetrics.wordsPerMinute))) : undefined,
-                filler_word_count: speechMetrics.fillerWordCount !== undefined ? Math.max(0, Math.round(speechMetrics.fillerWordCount)) : undefined,
-                clarity_score: speechMetrics.clarityScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.clarityScore))) : undefined,
-                pacing_score: speechMetrics.pacingScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.pacingScore))) : undefined,
-            };
-
-            const { error: dbError } = await supabase
-                .from('recordings')
-                .update(updateData)
-                .eq('id', recording.recordingId);
-
-            if (dbError) throw new Error('Failed to save transcript to database');
-
-            // Update context state (no-op when we're rendering DB-hydrated recordings,
-            // but keeps in-flight interview context consistent)
-            updateRecording(recording.recordingId, {
-                transcript,
-                duration,
-                ...speechMetrics,
-            });
-
-            // Also update hydrated recordings if we're rendering from DB (?sessionId=)
-            setHydratedRecordings(prev => prev
-                ? prev.map(r => r.recordingId === recording.recordingId
-                    ? { ...r, transcript, duration, ...speechMetrics }
-                    : r)
-                : prev
-            );
-
-            // Update selected recording so the UI refreshes
-            setSelectedRecording(prev => prev ? { ...prev, transcript, duration, ...speechMetrics } : prev);
-
+            // The server has already persisted the transcript before acknowledging it.
+            const updates = { transcript, duration, ...speechMetrics };
+            updateRecording(id, updates);
+            setHydratedRecordings(prev => prev?.map(rec => rec.recordingId === id ? { ...rec, ...updates } : rec) ?? prev);
+            setSelectedRecording(prev => prev?.recordingId === id ? { ...prev, ...updates } : prev);
         } catch (error) {
-            console.error('Transcription retry failed:', error);
-            setRetryError(error instanceof Error ? error.message : 'Retry failed. Please try again.');
+            if (current()) setRetryError(error instanceof Error ? error.message : 'Retry failed. Your saved video is unchanged.');
         } finally {
-            setIsRetryingTranscription(false);
+            if (retryControllerRef.current === controller) {
+                retryControllerRef.current = null;
+                setIsRetryingTranscription(false);
+                setRetryProgress('');
+            }
         }
     };
 
@@ -1217,7 +1212,7 @@ function AnalysisContent() {
                                     <div className="flex-1">
                                         <p className="text-white/80 font-medium text-sm mb-1">Transcript not available</p>
                                         <p className="text-white/50 text-xs mb-4">
-                                            The speech-to-text processing for this recording didn&apos;t complete. You can retry now — it only takes a few seconds.
+                                            Retry prepares a smaller audio copy in your browser, then transcribes it. Preparation can take as long as the answer (up to 10 minutes). Keep this tab active; your original video stays saved.
                                         </p>
                                         {retryError && (
                                             <p className="text-red-300 text-xs mb-3">{retryError}</p>
@@ -1230,7 +1225,7 @@ function AnalysisContent() {
                                             {isRetryingTranscription ? (
                                                 <>
                                                     <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                                    <span>Processing...</span>
+                                                    <span>{retryProgress || 'Processing…'}</span>
                                                 </>
                                             ) : (
                                                 <>
@@ -1242,6 +1237,13 @@ function AnalysisContent() {
                                                 </>
                                             )}
                                         </button>
+                                        {isRetryingTranscription && <button className="mt-3 text-sm text-white/70 underline" onClick={() => {
+                                            retryControllerRef.current?.abort();
+                                            retryControllerRef.current = null;
+                                            setIsRetryingTranscription(false);
+                                            setRetryProgress('');
+                                            setRetryError('Cancelled. Your original video is still saved.');
+                                        }}>Cancel</button>}
                                     </div>
                                 </div>
                             </div>

@@ -3,7 +3,7 @@ import { generateFeedback } from '@/services/claude';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
 import type { SessionType } from '@/types/interview';
 import type { Diagnosis } from '@/utils/diagnosisTaxonomy';
-import { authenticate, fail, readJson, requireUuid } from '@/server/http';
+import { authenticate, fail, readJson, requireRecordingId } from '@/server/http';
 import { ApiError } from '@/server/errors';
 import { getAdmin } from '@/server/clients';
 import { ownedRecording, reserveOperation, releaseOperation } from '@/server/practice';
@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     const user = await authenticate(request);
     userId = user.id;
     const body = await readJson(request);
-    const id = requireUuid(body.recordingId, 'recording ID');
+    const id = requireRecordingId(body.recordingId);
     const { recording, session, question } = await ownedRecording(id, user.id);
     const { data: saved, error: savedError } = await getAdmin().from('analyses').select('*').eq('recording_id', id).maybeSingle();
     if (savedError) throw new Error('Analysis lookup failed');

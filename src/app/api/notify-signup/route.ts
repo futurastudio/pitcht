@@ -7,15 +7,20 @@
  * Called from AuthContext.tsx (email/password) and auth/callback (OAuth).
  *
  * POST /api/notify-signup
- * Body: { userId, email, signupMethod }
+ * Requires a Bearer session; recipient and signup details come from verified Auth data.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getAdmin } from '@/server/clients';
+import { ApiError } from '@/server/errors';
+import { authenticate, fail, readJson } from '@/server/http';
 
-interface NotifySignupBody {
-  userId: string;
-  email: string;
-  signupMethod: 'email' | 'google';
+const SIGNUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]!);
 }
 
 function buildAdminEmail(email: string, signupMethod: string, userId: string, timestamp: string, ip: string, userAgent: string) {
@@ -26,12 +31,12 @@ function buildAdminEmail(email: string, signupMethod: string, userId: string, ti
     html: `
       <h2>New Pitcht Signup</h2>
       <table style="font-family: monospace; border-collapse: collapse;">
-        <tr><td style="padding: 4px 12px 4px 0;"><strong>Email</strong></td><td>${email}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0;"><strong>Method</strong></td><td>${signupMethod}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0;"><strong>User ID</strong></td><td>${userId}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0;"><strong>Time</strong></td><td>${timestamp}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0;"><strong>IP</strong></td><td>${ip}</td></tr>
-        <tr><td style="padding: 4px 12px 4px 0;"><strong>UA</strong></td><td>${userAgent}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0;"><strong>Email</strong></td><td>${escapeHtml(email)}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0;"><strong>Method</strong></td><td>${escapeHtml(signupMethod)}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0;"><strong>User ID</strong></td><td>${escapeHtml(userId)}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0;"><strong>Time</strong></td><td>${escapeHtml(timestamp)}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0;"><strong>IP</strong></td><td>${escapeHtml(ip)}</td></tr>
+        <tr><td style="padding: 4px 12px 4px 0;"><strong>UA</strong></td><td>${escapeHtml(userAgent)}</td></tr>
       </table>
     `,
     text: `New Pitcht Signup\n=================\nEmail: ${email}\nMethod: ${signupMethod}\nUser ID: ${userId}\nTime: ${timestamp}\nIP: ${ip}\nUA: ${userAgent}`.trim(),
@@ -136,79 +141,79 @@ Questions? Just reply to this email. I'm the founder and I read every one.
   };
 }
 
-async function sendEmail(resendApiKey: string, payload: object) {
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Resend ${res.status}: ${text}`);
+async function sendEmail(resendApiKey: string, payload: object, idempotencyKey: string, deadline: number) {
+  // Retry an uncertain response with the exact same payload/key. Resend retains keys
+  // for 24 hours, matching the maximum Auth signup window enforced below.
+  const body = JSON.stringify(payload);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // Leave room for the provider timeout; never retry beyond the eligibility/key window.
+    if (Date.now() + 5000 >= deadline) break;
+    let retryable = true;
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body,
+        signal: AbortSignal.timeout(5000),
+      });
+      if (response.ok) {
+        const result = await response.json();
+        if (typeof result?.id === 'string' && result.id) return;
+      } else {
+        retryable = response.status >= 500 || response.status === 429 || response.status === 409;
+        await response.body?.cancel();
+      }
+    } catch {
+      // A timeout/network error may follow a successful send; keep the key unchanged.
+    }
+    if (!retryable || attempt === 2) break;
+    await new Promise(resolve => setTimeout(resolve, 250 * (attempt + 1)));
   }
-  return res.json();
+  throw new Error('Notification delivery unavailable');
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const body: NotifySignupBody = await request.json();
-    const { userId, email, signupMethod } = body;
-
-    if (!userId || !email || !signupMethod) {
-      return NextResponse.json(
-        { error: 'Missing required fields: userId, email, signupMethod' },
-        { status: 400 }
-      );
+    const user = await authenticate(request);
+    // Accept old caller fields for compatibility, but never use their identity or email.
+    await readJson(request, 2048);
+    const createdAt = Date.parse(user.created_at);
+    const age = Date.now() - createdAt;
+    if (!Number.isFinite(createdAt) || age < 0 || age >= SIGNUP_WINDOW_MS) {
+      throw new ApiError(403, 'Signup notification is no longer available.', 'signup_window_closed');
     }
-
+    if (!user.email_confirmed_at || !user.email || user.email.length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(user.email)) {
+      throw new ApiError(403, 'Confirm your email before requesting a welcome message.', 'email_unconfirmed');
+    }
     const resendApiKey = process.env.RESEND_API_KEY;
-    if (!resendApiKey) {
-      console.error('[notify-signup] RESEND_API_KEY not configured');
-      return NextResponse.json(
-        { error: 'Resend not configured' },
-        { status: 500 }
-      );
+    if (!resendApiKey) throw new Error('Notification provider unavailable');
+
+    // This private RPC serializes limits across server instances. Do not use the
+    // practice wrapper: notifications do not require a Stripe refresh or paid access.
+    const { data: budget, error } = await getAdmin().rpc('consume_ai_budget', {
+      p_user_id: user.id, p_operation: 'notify_signup', p_recording_id: null,
+    });
+    if (error || !budget || typeof budget.allowed !== 'boolean') throw new Error('Notification budget unavailable');
+    if (!budget.allowed) {
+      throw new ApiError(429, 'A signup notification has already been requested.', 'rate_limited');
     }
 
-    const timestamp = new Date().toISOString();
-    const ip = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown';
-    const userAgent = request.headers.get('user-agent') || 'unknown';
-
-    // Send both emails in parallel (non-blocking relative to each other)
-    const [adminResult, welcomeResult] = await Promise.allSettled([
-      sendEmail(resendApiKey, buildAdminEmail(email, signupMethod, userId, timestamp, ip, userAgent)),
-      sendEmail(resendApiKey, buildWelcomeEmail(email)),
+    const signupMethod = user.app_metadata.provider === 'google' ? 'google' : 'email';
+    // Request headers and the current time would change the idempotent payload on
+    // retries. Use the Auth creation time and omit caller-controlled request details.
+    const results = await Promise.allSettled([
+      sendEmail(resendApiKey, buildAdminEmail(user.email, signupMethod, user.id,
+        new Date(createdAt).toISOString(), 'Not collected', 'Not collected'), `signup-admin/${user.id}`, createdAt + SIGNUP_WINDOW_MS),
+      sendEmail(resendApiKey, buildWelcomeEmail(user.email), `signup-welcome/${user.id}`, createdAt + SIGNUP_WINDOW_MS),
     ]);
-
-    const sent: string[] = [];
-    const errors: string[] = [];
-
-    if (adminResult.status === 'fulfilled') {
-      sent.push(`admin:${adminResult.value.id}`);
-      console.log('[notify-signup] Admin alert sent:', adminResult.value.id);
-    } else {
-      errors.push(`admin:${adminResult.reason}`);
-      console.error('[notify-signup] Admin alert failed:', adminResult.reason);
-    }
-
-    if (welcomeResult.status === 'fulfilled') {
-      sent.push(`welcome:${welcomeResult.value.id}`);
-      console.log('[notify-signup] Welcome email sent:', welcomeResult.value.id);
-    } else {
-      errors.push(`welcome:${welcomeResult.reason}`);
-      console.error('[notify-signup] Welcome email failed:', welcomeResult.reason);
-    }
-
-    return NextResponse.json({ success: true, sent, errors: errors.length ? errors : undefined });
-
+    if (results.some(result => result.status === 'rejected')) throw new Error('Notification delivery unavailable');
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('[notify-signup] Error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return fail(error);
   }
 }

@@ -3,7 +3,7 @@
  * Handles all database operations for sessions, questions, recordings, and analyses
  */
 
-import { supabase, uploadVideo, getVideoUrl as getVideoUrlFromStorage } from './supabase';
+import { supabase, uploadVideo, recordingVideoPath, getVideoUrl as getVideoUrlFromStorage } from './supabase';
 import type { SessionType, Question } from '@/types/interview';
 import type { Diagnosis } from '@/utils/diagnosisTaxonomy';
 import { apiFetch } from '@/utils/api';
@@ -90,6 +90,11 @@ export async function createSession(
  * @param metrics - All metrics (speech + video)
  * @returns Object with recording ID and video URL (for analysis page playback)
  */
+export interface RecordingSaveCheckpoint {
+  captureId: string;
+  uploadedPath?: string;
+}
+
 export async function saveRecording(
   userId: string,
   sessionId: string,
@@ -97,46 +102,65 @@ export async function saveRecording(
   videoBlob: Blob,
   transcript: string,
   duration: number,
-  metrics: RecordingMetrics
+  metrics: RecordingMetrics,
+  checkpoint: RecordingSaveCheckpoint,
 ): Promise<{ id: string; videoUrl: string }> {
-  console.log(`💾 Saving recording for question: ${questionId}`);
-
-  // Upload video to storage
-  const videoPath = await uploadVideo(userId, sessionId, videoBlob);
+  const videoPath = recordingVideoPath(userId, sessionId, videoBlob.type, checkpoint.captureId);
+  if (checkpoint.uploadedPath && checkpoint.uploadedPath !== videoPath) throw new Error('Recording upload checkpoint does not match this answer.');
+  const { data: session, error: sessionError } = await supabase.from('sessions').select('user_id').eq('id', sessionId).single();
+  if (sessionError || session?.user_id !== userId) throw new Error('Could not confirm ownership of this saved session. Keep this tab open and sign in again.');
+  const confirmRow = (row: { id: string; session_id: string; question_id: string; video_url: string }) => {
+    if (row.id !== checkpoint.captureId || row.session_id !== sessionId || row.question_id !== questionId || row.video_url !== videoPath) {
+      throw new Error('This capture ID already refers to a different answer. Download your original before recording again.');
+    }
+    return { id: row.id, videoUrl: row.video_url };
+  };
+  const reconcile = async () => {
+    const { data, error } = await supabase.from('recordings').select('id,session_id,question_id,video_url').eq('id', checkpoint.captureId).maybeSingle();
+    if (error) throw new Error('Could not confirm whether this answer was saved. Keep this tab open and retry.');
+    return data ? confirmRow(data) : null;
+  };
+  // Reconcile first: an earlier insert can have committed despite losing its response.
+  const existing = await reconcile();
+  if (existing) return existing;
+  if (!checkpoint.uploadedPath) {
+    checkpoint.uploadedPath = await uploadVideo(userId, sessionId, videoBlob, checkpoint.captureId);
+  }
 
   // Insert recording with all metrics
   // Round all numeric values to integers (database expects INTEGER not FLOAT)
-  const { data: recording, error } = await supabase
-    .from('recordings')
-    .insert({
-      session_id: sessionId,
-      question_id: questionId,
-      video_url: videoPath,
-      transcript: transcript,
-      duration: Math.round(duration),
-      // Speech metrics (round to integers)
-      words_per_minute: metrics.wordsPerMinute ? Math.round(metrics.wordsPerMinute) : null,
-      filler_word_count: metrics.fillerWordCount ? Math.round(metrics.fillerWordCount) : null,
-      clarity_score: metrics.clarityScore ? Math.round(metrics.clarityScore) : null,
-      pacing_score: metrics.pacingScore ? Math.round(metrics.pacingScore) : null,
-      // Video metrics (round to integers)
-      eye_contact_percentage: metrics.eyeContactPercentage ? Math.round(metrics.eyeContactPercentage) : null,
-      gaze_stability: metrics.gazeStability ? Math.round(metrics.gazeStability) : null,
-      dominant_emotion: metrics.dominantEmotion,
-      emotion_confidence: metrics.emotionConfidence ? Math.round(metrics.emotionConfidence) : null,
-      presence_score: metrics.presenceScore ? Math.round(metrics.presenceScore) : null,
-    })
-    .select('id')
-    .single();
+  try {
+    const { data: recording, error } = await supabase
+      .from('recordings')
+      .insert({
+        id: checkpoint.captureId,
+        session_id: sessionId,
+        question_id: questionId,
+        video_url: videoPath,
+        transcript: transcript,
+        duration: Math.round(duration),
+        // Speech metrics (round to integers)
+        words_per_minute: metrics.wordsPerMinute ? Math.round(metrics.wordsPerMinute) : null,
+        filler_word_count: metrics.fillerWordCount ? Math.round(metrics.fillerWordCount) : null,
+        clarity_score: metrics.clarityScore ? Math.round(metrics.clarityScore) : null,
+        pacing_score: metrics.pacingScore ? Math.round(metrics.pacingScore) : null,
+        // Video metrics (round to integers)
+        eye_contact_percentage: metrics.eyeContactPercentage ? Math.round(metrics.eyeContactPercentage) : null,
+        gaze_stability: metrics.gazeStability ? Math.round(metrics.gazeStability) : null,
+        dominant_emotion: metrics.dominantEmotion,
+        emotion_confidence: metrics.emotionConfidence ? Math.round(metrics.emotionConfidence) : null,
+        presence_score: metrics.presenceScore ? Math.round(metrics.presenceScore) : null,
+      })
+      .select('id,session_id,question_id,video_url')
+      .single();
 
-  if (error) {
-    console.error('Recording save error:', error);
-    throw new Error(`Failed to save recording: ${error.message}`);
+    if (error || !recording) throw new Error('Recording save was not acknowledged.');
+    return confirmRow(recording);
+  } catch {
+    const confirmed = await reconcile();
+    if (confirmed) return confirmed;
+    throw new Error('Your video uploaded, but the answer has not finished saving. Keep this tab open and retry saving.');
   }
-
-  console.log(`✅ Recording saved: ${recording.id}, video URL: ${videoPath}`);
-  // Return both ID and video URL - videoUrl is CRITICAL for analysis page playback
-  return { id: recording.id, videoUrl: videoPath };
 }
 
 /**

@@ -5,8 +5,10 @@ import { toast } from 'sonner';
 import * as Sentry from '@sentry/nextjs';
 import { useAuth } from '@/context/AuthContext';
 import { createSession, saveRecording as saveRecordingToSupabase } from '@/services/sessionManager';
+import type { RecordingSaveCheckpoint } from '@/services/sessionManager';
 import type { User } from '@supabase/supabase-js';
 import type { Question, SessionType } from '@/types/interview';
+import { recordingMetadata, MAX_TRANSCRIPTION_BYTES } from '@/utils/recordingContract';
 
 export interface Recording {
     questionId: string;
@@ -14,10 +16,12 @@ export interface Recording {
     videoPath: string; // Local file path (Electron mode)
     videoUrl?: string; // Supabase storage path (web mode) - CRITICAL for analysis page playback
     recordingId?: string; // Database recording ID - for saving analyses
+    saveCheckpoint?: RecordingSaveCheckpoint; // Reserved capture identity, NOT proof the DB row saved.
     timestamp: number;
     transcript?: string; // Transcription from Whisper API
     duration?: number; // Duration in seconds
     videoBlob?: Blob; // Video blob for upload (Sprint 5B)
+    audioBlob?: Blob; // In-memory retry only; never serialized as if JSON preserves bytes.
     // Speech Analysis Metrics
     wordsPerMinute?: number;
     fillerWordCount?: number;
@@ -39,6 +43,7 @@ interface InterviewContextType {
     recordings: Recording[];
     addRecording: (recording: Recording) => Promise<{ recordingId?: string }>;
     updateRecording: (recordingId: string, updates: Partial<Recording>) => void;
+    discardUnsavedRecording: (captureId: string) => void;
     clearSession: () => void;
     repeatSession: (overrideConfig?: { type: string; context: string; questions: Question[] }) => void;
     questions: Question[];
@@ -57,6 +62,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
     const [questions, setQuestions] = useState<Question[]>([]);
     const [sessionId, setSessionId] = useState<string | null>(null);
     const isCreatingSessionRef = useRef(false);
+    const [storageLoaded, setStorageLoaded] = useState(false);
 
     // Load from localStorage on mount (fallback)
     useEffect(() => {
@@ -69,19 +75,33 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- batch setState from localStorage on mount is intentional (runs once, no cascading renders)
         if (savedSession) setSessionType(savedSession);
         if (savedContext) setSessionContext(savedContext);
-        if (savedRecordings) setRecordings(JSON.parse(savedRecordings));
+        if (savedRecordings) {
+            try { setRecordings(JSON.parse(savedRecordings).map(recordingMetadata)); } catch { /* Invalid recovery metadata cannot restore media. */ }
+        }
         if (savedQuestions) setQuestions(JSON.parse(savedQuestions));
         if (savedSessionId) setSessionId(savedSessionId);
+        setStorageLoaded(true);
     }, []);
 
     // Save to localStorage whenever state changes (fallback/backup)
     useEffect(() => {
+        if (!storageLoaded) return;
         if (sessionType) localStorage.setItem('pitcht_session_type', sessionType);
         if (sessionContext) localStorage.setItem('pitcht_session_context', sessionContext);
-        localStorage.setItem('pitcht_recordings', JSON.stringify(recordings));
+        localStorage.setItem('pitcht_recordings', JSON.stringify(recordings.map(recordingMetadata)));
         localStorage.setItem('pitcht_questions', JSON.stringify(questions));
         if (sessionId) localStorage.setItem('pitcht_session_id', sessionId);
-    }, [sessionType, sessionContext, recordings, questions, sessionId]);
+    }, [sessionType, sessionContext, recordings, questions, sessionId, storageLoaded]);
+
+    useEffect(() => {
+        const warn = (event: BeforeUnloadEvent) => {
+            if (recordings.some(recording => recording.videoBlob instanceof Blob && !recording.recordingId)) {
+                event.preventDefault(); event.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', warn);
+        return () => window.removeEventListener('beforeunload', warn);
+    }, [recordings]);
 
     // Create Supabase session when questions are generated
     // sessionContext intentionally excluded from deps — captured by closure at call time
@@ -113,10 +133,12 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
 
     const addRecording = async (recording: Recording): Promise<{ recordingId?: string }> => {
         // Always add to local state first (immediate feedback)
-        setRecordings(prev => [...prev, recording]);
+        // Retry the same captured answer without accumulating duplicate local entries.
+        const retained = { ...recording, audioBlob: recording.audioBlob && recording.audioBlob.size <= MAX_TRANSCRIPTION_BYTES ? recording.audioBlob : undefined };
+        setRecordings(prev => [...prev.filter(rec => rec.timestamp !== recording.timestamp || rec.questionId !== recording.questionId), retained]);
 
         // Upload to Supabase if we have user, sessionId, and videoBlob
-        if (user && sessionId && recording.videoBlob) {
+        if (user && sessionId && recording.videoBlob && recording.saveCheckpoint) {
             try {
                 const result = await saveRecordingToSupabase(
                     user.id,
@@ -137,13 +159,14 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
                         dominantEmotion: recording.dominantEmotion,
                         emotionConfidence: recording.emotionConfidence,
                         presenceScore: recording.presenceScore,
-                    }
+                    },
+                    recording.saveCheckpoint,
                 );
 
                 // CRITICAL: Update the recording with videoUrl AND recordingId for analysis page playback and saving analyses
                 setRecordings(prev => prev.map(rec =>
-                    rec.questionId === recording.questionId
-                        ? { ...rec, videoUrl: result.videoUrl, recordingId: result.id }
+                    rec.questionId === recording.questionId && rec.timestamp === recording.timestamp
+                        ? { ...rec, videoUrl: result.videoUrl, recordingId: result.id, videoBlob: undefined }
                         : rec
                 ));
 
@@ -170,7 +193,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
                     },
                 });
                 toast.error('Recording upload failed', {
-                    description: 'Your recording could not be saved. Check your connection — you may need to redo this answer.',
+                    description: 'Keep this tab open. Your captured answer is still here; check your connection and choose Retry saving. Refreshing now would lose the unsaved media.',
                 });
                 return {};
             }
@@ -200,6 +223,10 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
                 ? { ...rec, ...updates }
                 : rec
         ));
+    };
+
+    const discardUnsavedRecording = (captureId: string) => {
+        setRecordings(prev => prev.filter(rec => rec.recordingId || rec.saveCheckpoint?.captureId !== captureId));
     };
 
     const clearSession = () => {
@@ -261,6 +288,7 @@ export function InterviewProvider({ children }: { children: ReactNode }) {
             recordings,
             addRecording,
             updateRecording,
+            discardUnsavedRecording,
             clearSession,
             repeatSession,
             questions,

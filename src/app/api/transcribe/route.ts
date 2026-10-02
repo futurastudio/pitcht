@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { transcribeAudio } from '@/services/whisper';
 import { analyzeSpeech } from '@/services/speechAnalyzer';
-import { authenticate, fail, requireUuid } from '@/server/http';
+import { authenticate, fail, requireRecordingId } from '@/server/http';
 import { ApiError } from '@/server/errors';
 import { getAdmin } from '@/server/clients';
 import { ownedRecording, reserveOperation, releaseOperation } from '@/server/practice';
@@ -17,11 +17,11 @@ export async function POST(request: Request) {
     userId = user.id;
     if (Number(request.headers.get('content-length')) > MAX_AUDIO_BYTES + 64_000) throw new ApiError(413, 'Audio upload is too large.');
     const form = await request.formData();
-    const id = requireUuid(form.get('recordingId'), 'recording ID');
+    const id = requireRecordingId(form.get('recordingId'));
     let { recording, question } = await ownedRecording(id, user.id);
     const audio = form.get('audio');
     if (!(audio instanceof File) || audio.size < 1) throw new ApiError(400, 'An audio file is required.');
-    if (audio.size > MAX_AUDIO_BYTES) throw new ApiError(413, 'Audio must be at most 4 MB. Large-recording recovery is not yet supported.');
+    if (audio.size > MAX_AUDIO_BYTES) throw new ApiError(413, 'Audio must be at most 4 MiB. Open the saved answer from History and retry to compress its audio.', 'audio_too_large');
     const mime = audio.type.split(';')[0].trim().toLowerCase();
     if (!['audio/webm','audio/mpeg','audio/mp4','audio/wav','audio/ogg','video/webm'].includes(mime)) {
       throw new ApiError(400, 'Unsupported audio format.');

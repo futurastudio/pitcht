@@ -46,23 +46,14 @@ function CallbackHandler() {
         console.error('OAuth code exchange error:', error.message);
         router.push('/?error=auth_failed');
       } else {
-        // Notify on new Google signup
+        // AuthProvider sends the authenticated welcome notification on SIGNED_IN.
+        // Track the new Google signup here after the code exchange succeeds.
         if (data.user?.id && data.user?.email) {
-          // Only notify if this is a truly new user (created_at ~= now)
+          // Only track signup if this is a truly new user (created_at ~= now).
           const createdAt = new Date(data.user.created_at);
           const now = new Date();
           const minutesSinceCreation = (now.getTime() - createdAt.getTime()) / 1000 / 60;
           if (minutesSinceCreation < 5) {
-            fetch('/api/notify-signup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userId: data.user.id,
-                email: data.user.email,
-                signupMethod: 'google',
-              }),
-            }).catch((err) => console.error('[auth-callback] Signup notification failed:', err));
-
             identifyUser(data.user.id, { email: data.user.email, signup_method: 'google' });
             trackEvent(AnalyticsEvents.SIGNUP_COMPLETED, { method: 'google' });
           }

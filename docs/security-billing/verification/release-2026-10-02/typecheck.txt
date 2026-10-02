@@ -1,0 +1,1 @@
+PASS: tsc --noEmit, clean regenerated Next.js declarations, exit 0.

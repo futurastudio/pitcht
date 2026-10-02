@@ -86,11 +86,11 @@ export async function deliverPurchaseEvents(subscriptionId: string) {
     .eq('subscription_id', subscriptionId).is('delivered_at', null);
   if (error) throw new Error('Billing analytics lookup failed');
   for (const row of data ?? []) {
-    if (!await trackDurableEvent('checkout_completed', row.user_id, row.properties, row.id)) continue;
+    if (!await trackDurableEvent('checkout_completed', row.user_id, row.properties, row.id, row.created_at)) continue;
     const { data: updated, error: updateError } = await getAdmin().from('billing_analytics_outbox')
       .update({ delivered_at: new Date().toISOString() }).eq('id', row.id).is('delivered_at', null).select('id');
     if (updateError || !updated) throw new Error('Billing analytics acknowledgement failed');
-    // A concurrent sender may have acknowledged first; stable $insert_id deduplicates delivery.
+    // A concurrent sender may have acknowledged first; every sender reuses identity/time.
   }
   } catch {
     // Billing is already committed. The protected cron drain retries analytics.

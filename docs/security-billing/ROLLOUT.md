@@ -1,6 +1,8 @@
 # Review-gated rollout and reconciliation plan
 
-No step in this document has been executed against production. Deployment, migration, Stripe replay, customer/account changes and real provider calls require the parent's/user's separate authorization. Keep the branch local until review is complete.
+No step in this document has been executed against production. The owner subsequently requested completion and deployment; that authorization does not replace credential availability, test evidence, or verification of the target environment. Keep the branch local until review is complete. Explicit approval for a private production public-data before-image is pending after automatic approval review rejected the broader data-copying operation under the original read-only scope.
+
+For the current release, [ATOMIC-CUTOVER.md](ATOMIC-CUTOVER.md) supersedes the historical migration mechanism below. Apply only `atomic-cutover.sql` as one transaction after old server admission is closed and in-flight writers drain. Storage/Auth modification or a coordinated media-byte snapshot is not part of this public-schema release. Recovery after commit is forward-only; never restore vulnerable grants or a stale public dump across newer billing/usage/media state.
 
 ## 1. Prepare a sandbox and inventory the real schema
 
