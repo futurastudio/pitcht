@@ -181,7 +181,7 @@ test('SQL: concurrent stale revisions permit one update; losing event is not ack
   await sync(snapshot(),null);
   const results=await Promise.allSettled([sync(snapshot(),1,'evt_race_a'),sync(snapshot(),1,'evt_race_b')]);
   assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
-  const rejected=results.find(r=>r.status==='rejected'); assert.equal(rejected?.status==='rejected' && rejected.reason.code,'40001');
+  const rejected=results.find(r=>r.status==='rejected'); assert.equal(rejected?.status==='rejected' && rejected.reason.code,'PT409');
   assert.equal(Number((await query('SELECT count(*) AS n FROM billing_events'))[0].n),1);
 });
 test('SQL: anonymous/authenticated cannot invoke privileged RPCs or write subscription/session bindings',{skip:!enabled},async()=>{

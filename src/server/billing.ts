@@ -36,7 +36,9 @@ export async function syncSubscription(subscriptionId: string, expectedUserId?: 
       p_purchase: checkout ? { session_id: checkout.id, amount_total: checkout.amount_total,
         currency: checkout.currency } : null,
     });
-    if (error?.code === '40001') continue;
+    // PT409 is an application conflict, not a transaction-level 40001 that older
+    // PostgREST versions retry indefinitely without refreshing the snapshot.
+    if (error?.code === 'PT409') continue;
     if (error?.code === '42501') throw new ApiError(403, 'Subscription ownership conflict.', 'billing_owner_mismatch');
     if (error || !data || !['applied', 'duplicate'].includes(data.result)) throw new Error('Billing persistence failed');
     if (data.subscription?.user_id !== userId || data.subscription?.stripe_subscription_id !== subscriptionId) {

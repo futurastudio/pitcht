@@ -60,17 +60,46 @@ test('verification refuses existing owner conflict before any write', async () =
 
 test('billing revision conflicts re-fetch current Stripe state; failed/empty persistence never succeeds', async () => {
   let reads = 0; let calls = 0;
-  const db = mockDb({ subscriptions: [] }, () => ({ result: 'applied', subscription: normalizeSubscription(subscription(), USER_A) }));
+  const tables = { subscriptions: [{ ...normalizeSubscription(subscription(), USER_A), billing_revision: 1 }] };
+  const db = mockDb(tables, (_name, args) => {
+    assert.equal(args.p_expected_revision, 2);
+    assert.equal((args.p_snapshot as Row).status, 'past_due');
+    return { result: 'applied', subscription: args.p_snapshot };
+  });
   const rpc = db.rpc;
-  db.rpc = async (name, args) => ++calls === 1 ? { data: null, error: { code: '40001' } } : rpc(name,args);
+  db.rpc = async (name, args) => {
+    if (++calls !== 1) return rpc(name, args);
+    assert.equal(args.p_expected_revision, 1);
+    tables.subscriptions[0].billing_revision = 2;
+    return { data: null, error: { code: 'PT409' } };
+  };
   const service = loadSource<typeof import('../src/server/billing')>('src/server/billing.ts', {
     '@/utils/posthog-server': { trackDurableEvent: async () => true }, './clients': { getAdmin: () => db,
-      getStripe: () => ({ subscriptions: { retrieve: async () => { reads++; return subscription(); } } }) },
+      getStripe: () => ({ subscriptions: { retrieve: async () => subscription({ status: ++reads === 1 ? 'active' : 'past_due' }) } }) },
   });
-  assert.equal((await service.syncSubscription('sub_owned', USER_A)).user_id, USER_A);
+  const saved = await service.syncSubscription('sub_owned', USER_A);
+  assert.equal(saved.user_id, USER_A);
+  assert.equal(saved.status, 'past_due');
   assert.equal(reads, 2);
   db.rpc = async () => ({ data: null, error: null });
   await assert.rejects(service.syncSubscription('sub_owned', USER_A), /persistence failed/i);
+});
+
+test('persistent billing conflicts stop after three fresh reads without delivering a purchase', async () => {
+  let reads = 0; let writes = 0; let deliveries = 0;
+  const db = mockDb({ subscriptions: [] }, () => null);
+  db.rpc = async () => { writes++; return { data: null, error: { code: 'PT409' } }; };
+  const service = loadSource<typeof import('../src/server/billing')>('src/server/billing.ts', {
+    '@/utils/posthog-server': { trackDurableEvent: async () => { deliveries++; return true; } },
+    './clients': { getAdmin: () => db, getStripe: () => ({
+      checkout: { sessions: { retrieve: async () => checkout() } },
+      subscriptions: { retrieve: async () => { reads++; return subscription(); } },
+    }) },
+  });
+  await assert.rejects(service.verifyCheckout('cs_owned', USER_A), /Concurrent billing update/);
+  assert.equal(reads, 3);
+  assert.equal(writes, 3);
+  assert.equal(deliveries, 0);
 });
 
 function fixtures(owner = USER_A) {

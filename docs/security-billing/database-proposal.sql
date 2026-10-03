@@ -148,7 +148,9 @@ BEGIN
   END IF;
   IF (existing.id IS NULL AND p_expected_revision IS NOT NULL) OR
      (existing.id IS NOT NULL AND existing.billing_revision IS DISTINCT FROM p_expected_revision) THEN
-    RAISE EXCEPTION 'Billing revision changed' USING ERRCODE = '40001';
+    -- Application conflict: PostgREST 13 retries 40001 with the same stale input.
+    -- PT409 returns promptly so the application can re-read Stripe and revision.
+    RAISE EXCEPTION 'Billing revision changed' USING ERRCODE = 'PT409';
   END IF;
   INSERT INTO public.subscriptions(user_id,stripe_subscription_id,stripe_customer_id,stripe_price_id,status,
     current_period_start,current_period_end,canceled_at,stripe_synced_at,billing_revision,updated_at)
