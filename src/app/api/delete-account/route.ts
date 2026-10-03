@@ -3,6 +3,7 @@ import { authenticate, fail } from '@/server/http';
 import { getAdmin, getStripe } from '@/server/clients';
 import { ApiError } from '@/server/errors';
 import { stripeId } from '@/server/billingPolicy';
+import { ACCOUNT_DELETION_ENABLED, ACCOUNT_DELETION_UNAVAILABLE_MESSAGE } from '@/utils/accountDeletion';
 
 export const maxDuration = 60;
 const PAGE_SIZE = 100;
@@ -13,6 +14,9 @@ const PAGE_SIZE = 100;
 export async function POST(request: Request) {
   try {
     const user = await authenticate(request);
+    if (!ACCOUNT_DELETION_ENABLED) {
+      throw new ApiError(503, ACCOUNT_DELETION_UNAVAILABLE_MESSAGE, 'account_deletion_unavailable');
+    }
     const admin = getAdmin();
     const bucket = admin.storage.from('recordings');
     const subscriptions: Array<{ stripe_subscription_id: string; stripe_customer_id: string }> = [];

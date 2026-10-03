@@ -49,10 +49,50 @@ function fixture(options: { failure?: Failure; wrongOwner?: boolean; foreignPath
       if (failure === 'stripe') throw new Error('private provider error'); const row = subscriptions.find(s => s.id === id)!; row.status = 'canceled';
       if (lost) { lost = false; throw new Error('lost accepted response'); } return row; },
   } }) };
-  const route = loadSource<{ POST(request: Request): Promise<Response> }>('src/app/api/delete-account/route.ts', { '@/server/clients': clients, './clients': clients });
+  // Historical cleanup behavior stays covered through an offline-only override.
+  // Production/default containment is exercised separately below.
+  const route = loadSource<{ POST(request: Request): Promise<Response> }>('src/app/api/delete-account/route.ts', {
+    '@/server/clients': clients, './clients': clients,
+    '@/utils/accountDeletion': { ACCOUNT_DELETION_ENABLED: true },
+  });
   return { calls, objects, subscriptions, state: () => ({ accountExists, bindingsExist, sessionExists }), recover: () => { failure = undefined; },
     run: (token = 'valid') => route.POST(new Request('http://localhost/delete', { method: 'POST', headers: { Authorization: `Bearer ${token}` } })) };
 }
+
+test('release containment authenticates and rejects deletion before any inventory or cleanup, including stale-client retries', async () => {
+  const calls: string[] = [];
+  const unexpected = () => { calls.push('unexpected'); throw new Error('Cleanup must not start'); };
+  const db = {
+    auth: {
+      getUser: async (token: string) => ({ data: { user: token === 'valid' ? { id: USER_A } : null }, error: null }),
+      admin: { deleteUser: unexpected },
+    },
+    from: unexpected, storage: { from: unexpected }, rpc: unexpected,
+  };
+  const clients = { getAdmin: () => db, getStripe: unexpected };
+  const route = loadSource<{ POST(request: Request): Promise<Response> }>('src/app/api/delete-account/route.ts', {
+    '@/server/clients': clients, './clients': clients,
+  });
+  for (const authorization of [undefined, 'Bearer invalid']) {
+    const response = await route.POST(new Request('http://localhost/api/delete-account', {
+      method: 'POST', headers: authorization ? { Authorization: authorization } : {},
+    }));
+    assert.equal(response.status, 401);
+  }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await route.POST(new Request('http://localhost/api/delete-account', {
+      method: 'POST', headers: { Authorization: 'Bearer valid', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId: USER_B, confirmed: true }),
+    }));
+    assert.equal(response.status, 503);
+    const result = await response.json();
+    assert.equal(result.code, 'account_deletion_unavailable');
+    assert.equal(result.error, 'Account deletion is temporarily unavailable.');
+    assert.equal(result.success, undefined);
+    assert.equal(result.deletedAt, undefined);
+  }
+  assert.deepEqual(calls, []);
+});
 
 test('deletion inventories paginated history/nested and orphan uploads; cancels every live subscription before identity removal', async () => {
   const f = fixture({ many: true }); assert.equal((await f.run()).status, 200);

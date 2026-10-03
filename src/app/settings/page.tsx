@@ -1,6 +1,7 @@
 'use client';
 
 import { ACCOUNT_CHANGE_EVENT, UNSAVED_ACCOUNT_MESSAGE } from '@/utils/accountRecovery';
+import { ACCOUNT_DELETION_ENABLED, ACCOUNT_DELETION_UNAVAILABLE_MESSAGE } from '@/utils/accountDeletion';
 
 import { apiFetch } from '@/utils/api';
 import React, { useState, useEffect } from 'react';
@@ -161,6 +162,7 @@ export default function SettingsPage() {
   };
 
   const handleDeleteAccount = async () => {
+    if (!ACCOUNT_DELETION_ENABLED) return;
     if (!user) return;
     if (deleteConfirmText !== 'DELETE') {
       toast.error('Please type DELETE to confirm account deletion.');
@@ -537,15 +539,23 @@ export default function SettingsPage() {
             {/* Delete Account */}
             <div className="pt-6 border-t border-red-500/30">
               <h3 className="text-lg font-semibold text-red-400 mb-2">Delete Account</h3>
-              <p className="text-white/60 text-sm mb-4">
-                Permanently delete your account and saved recordings, and cancel linked subscriptions. This action cannot be undone.
-              </p>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="px-6 py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 transition-all duration-200 rounded-full font-semibold"
-              >
-                Delete My Account
-              </button>
+              {!ACCOUNT_DELETION_ENABLED ? (
+                <p className="text-white/60 text-sm">
+                  {ACCOUNT_DELETION_UNAVAILABLE_MESSAGE} You can still manage or cancel your subscription in the billing section above.
+                </p>
+              ) : (
+                <>
+                  <p className="text-white/60 text-sm mb-4">
+                    Permanently delete your account and saved recordings, and cancel linked subscriptions. This action cannot be undone.
+                  </p>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="px-6 py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 transition-all duration-200 rounded-full font-semibold"
+                  >
+                    Delete My Account
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -562,7 +572,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Delete Account Confirmation Modal */}
-      {showDeleteConfirm && (
+      {ACCOUNT_DELETION_ENABLED && showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
