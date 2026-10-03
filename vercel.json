@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "codex/security-billing-repair": false
+    }
+  },
   "buildCommand": "next build",
   "devCommand": "next dev",
   "installCommand": "npm install",
