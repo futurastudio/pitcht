@@ -18,8 +18,8 @@ export default function PricingPage() {
   // decision friction and lifts annual conversion. Users can toggle to monthly.
   const [billing, setBilling] = useState<'monthly' | 'annual'>('annual');
 
-  const monthlyPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY!;
-  const annualPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL!;
+  const monthlyPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY?.trim() ?? '';
+  const annualPriceId = process.env.NEXT_PUBLIC_STRIPE_PRICE_ANNUAL?.trim() ?? '';
   const selectedPriceId = billing === 'annual' ? annualPriceId : monthlyPriceId;
   const isCheckoutInFlight = isLoading !== null;
 

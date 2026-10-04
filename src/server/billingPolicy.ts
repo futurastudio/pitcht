@@ -15,10 +15,11 @@ export function allowedPriceIds(env = process.env): Set<string> {
 }
 
 export function requireApprovedPrice(id: unknown) {
-  if (typeof id !== 'string' || !allowedPriceIds().has(id)) {
+  const priceId = typeof id === 'string' ? id.trim() : '';
+  if (!priceId || !allowedPriceIds().has(priceId)) {
     throw new ApiError(400, 'This price is not available.', 'invalid_price');
   }
-  return id;
+  return priceId;
 }
 
 export function stripeId(value: string | { id: string } | null | undefined): string | null {
@@ -44,7 +45,7 @@ export function normalizeSubscription(subscription: Stripe.Subscription, userId:
   }
   if (subscription.items.data.length !== 1) throw new ApiError(409, 'Unsupported subscription configuration.');
   const item = subscription.items.data[0];
-  requireApprovedPrice(item.price.id);
+  const priceId = requireApprovedPrice(item.price.id);
   const customer = stripeId(subscription.customer);
   if (!customer || !Number.isFinite(item.current_period_start) || !Number.isFinite(item.current_period_end) ||
       item.current_period_end <= item.current_period_start) throw new Error('Invalid subscription period');
@@ -52,7 +53,7 @@ export function normalizeSubscription(subscription: Stripe.Subscription, userId:
     user_id: userId,
     stripe_subscription_id: subscription.id,
     stripe_customer_id: customer,
-    stripe_price_id: item.price.id,
+    stripe_price_id: priceId,
     status: subscription.status,
     current_period_start: new Date(item.current_period_start * 1000).toISOString(),
     current_period_end: new Date(item.current_period_end * 1000).toISOString(),

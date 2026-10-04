@@ -29,6 +29,9 @@ test('paid checkout binds caller, subscription metadata and customer; rejects st
 test('only approved configured prices, valid periods and actual Stripe status are persisted', () => {
   assert.throws(() => requireApprovedPrice('price_other_product'));
   assert.equal(normalizeSubscription(subscription({ status: 'past_due' }), USER_A).status, 'past_due');
+  const padded = subscription();
+  padded.items.data[0].price.id = ' price_monthly\n';
+  assert.equal(normalizeSubscription(padded, USER_A).stripe_price_id, 'price_monthly');
   assert.throws(() => normalizeSubscription(subscription({ items: { data: [] } }), USER_A));
 });
 
@@ -325,6 +328,41 @@ test('checkout creates only an approved price for the authenticated owner and bl
   assert.match(String(options.idempotencyKey),new RegExp(USER_A));
   existing=true;
   assert.equal((await api.POST(request({priceId:'price_monthly'}))).status,409);assert.equal(calls,1);
+});
+
+test('checkout normalizes surrounding price whitespace before Stripe calls and idempotency while keeping the allowlist', async () => {
+  const priorMonthly = process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY;
+  process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY = ' price_monthly\n';
+  const retrieved: string[] = [];
+  const created: Array<{ input: Row; options: Row }> = [];
+  let reservations = 0;
+  const db = mockDb({}, () => ({ allowed: true }));
+  const clients = { getAdmin: () => db, getStripe: () => ({
+    prices: { retrieve: async (id: string) => { retrieved.push(id); return { active: true, type: 'recurring', recurring: { interval: 'month' } }; } },
+    checkout: { sessions: { create: async (input: Row, options: Row) => { created.push({ input, options }); return { url: 'https://checkout.stripe.test/synthetic' }; } } },
+  }) };
+  const api = loadSource<{ POST(r: Request): Promise<Response> }>('src/app/api/create-checkout-session/route.ts', {
+    '@/server/clients': clients, './clients': clients,
+    '@/server/practice': { getPracticeAccess: async () => ({ isPremium: false, isTrialing: false }), reserveOperation: async () => { reservations++; } },
+  });
+  try {
+    for (const priceId of [' \tprice_monthly\r\n', 'price_monthly']) {
+      assert.equal((await api.POST(request({ priceId }))).status, 200);
+    }
+    assert.deepEqual(retrieved, ['price_monthly', 'price_monthly']);
+    for (const { input, options } of created) {
+      assert.equal((input.line_items as Row[])[0].price, 'price_monthly');
+      assert.match(String(options.idempotencyKey), new RegExp(`^pitcht-checkout:${USER_A}:price_monthly:\\d+$`));
+    }
+    for (const priceId of [' price_arbitrary\n', 'price_ monthly', '', ' \r\n', null, 7, ['price_monthly']]) {
+      assert.equal((await api.POST(request({ priceId }))).status, 400);
+    }
+    assert.equal(reservations, 2);
+    assert.equal(created.length, 2);
+  } finally {
+    if (priorMonthly === undefined) delete process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY;
+    else process.env.NEXT_PUBLIC_STRIPE_PRICE_MONTHLY = priorMonthly;
+  }
 });
 
 test('protected analytics cron rejects missing/wrong credentials and drains pending identities', async () => {
