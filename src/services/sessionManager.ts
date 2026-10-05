@@ -7,6 +7,7 @@ import { supabase, uploadVideo, recordingVideoPath, getVideoUrl as getVideoUrlFr
 import type { SessionType, Question } from '@/types/interview';
 import type { Diagnosis } from '@/utils/diagnosisTaxonomy';
 import { apiFetch } from '@/utils/api';
+import { STORAGE_RESTRICTED_MESSAGE } from '@/utils/recordingContract';
 
 // Re-export getVideoUrl for convenience
 export { getVideoUrl } from './supabase';
@@ -107,7 +108,8 @@ export async function saveRecording(
 ): Promise<{ id: string; videoUrl: string }> {
   const videoPath = recordingVideoPath(userId, sessionId, videoBlob.type, checkpoint.captureId);
   if (checkpoint.uploadedPath && checkpoint.uploadedPath !== videoPath) throw new Error('Recording upload checkpoint does not match this answer.');
-  const { data: session, error: sessionError } = await supabase.from('sessions').select('user_id').eq('id', sessionId).single();
+  const { data: session, error: sessionError, status: sessionStatus } = await supabase.from('sessions').select('user_id').eq('id', sessionId).single();
+  if (sessionStatus === 402) throw new Error(STORAGE_RESTRICTED_MESSAGE);
   if (sessionError || session?.user_id !== userId) throw new Error('Could not confirm ownership of this saved session. Keep this tab open and sign in again.');
   const confirmRow = (row: { id: string; session_id: string; question_id: string; video_url: string }) => {
     if (row.id !== checkpoint.captureId || row.session_id !== sessionId || row.question_id !== questionId || row.video_url !== videoPath) {
@@ -116,7 +118,8 @@ export async function saveRecording(
     return { id: row.id, videoUrl: row.video_url };
   };
   const reconcile = async () => {
-    const { data, error } = await supabase.from('recordings').select('id,session_id,question_id,video_url').eq('id', checkpoint.captureId).maybeSingle();
+    const { data, error, status } = await supabase.from('recordings').select('id,session_id,question_id,video_url').eq('id', checkpoint.captureId).maybeSingle();
+    if (status === 402) throw new Error(STORAGE_RESTRICTED_MESSAGE);
     if (error) throw new Error('Could not confirm whether this answer was saved. Keep this tab open and retry.');
     return data ? confirmRow(data) : null;
   };

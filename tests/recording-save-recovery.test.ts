@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { loadSource, USER_A, USER_B, RECORDING, SESSION, QUESTION } from './module-loader';
 import type { RecordingSaveCheckpoint } from '../src/services/sessionManager';
+import { STORAGE_RESTRICTED_MESSAGE } from '../src/utils/recordingContract';
 
 type RecordingRow = { id: string; session_id: string; question_id: string; video_url: string };
-type Failure = 'upload_response_lost' | 'upload_and_read_lost' | 'insert_failure' | 'insert_response_lost' | 'insert_and_read_lost' | 'none';
+type Failure = 'upload_response_lost' | 'upload_and_read_lost' | 'insert_failure' | 'insert_response_lost' | 'insert_and_read_lost' | 'session_restricted' | 'reconcile_restricted' | 'none';
 function fixture(failure: Failure = 'none') {
   const objects = new Map<string, Blob>(); const rows = new Map<string, RecordingRow>();
   let uploads = 0; let inserts = 0; let reads = 0; let ownership = USER_A;
@@ -29,6 +30,7 @@ function fixture(failure: Failure = 'none') {
         select: () => query, eq: (_key: string, value: string) => { id = value; return query; },
         insert: (row: RecordingRow) => { inserted = row; return query; },
         single: async () => {
+          if (table === 'sessions' && failure === 'session_restricted') return { data: null, error: { message: 'Service restricted' }, status: 402 };
           if (table === 'sessions') return { data: { user_id: ownership }, error: null };
           assert.ok(inserted); inserts++;
           if (failure === 'insert_failure' && !insertFailed) { insertFailed = true; return { data: null, error: { message: 'Temporary insert rejection' } }; }
@@ -39,6 +41,7 @@ function fixture(failure: Failure = 'none') {
         },
         maybeSingle: async () => {
           reads++;
+          if (failure === 'reconcile_restricted') return { data: null, error: { message: 'Service restricted' }, status: 402 };
           if (failure === 'insert_and_read_lost' && insertFailed && !readFailed) { readFailed = true; return { data: null, error: { message: 'Reconciliation unavailable' } }; }
           return { data: rows.get(id) ?? null, error: null };
         },
@@ -96,4 +99,14 @@ test('capture conflict, wrong session ownership and altered existing media fail 
   changed.objects.set(changed.expectedPath, wrongBytes);
   await assert.rejects(changed.save(), /Could not confirm this video upload/);
   assert.equal(changed.objects.get(changed.expectedPath), wrongBytes); assert.equal(changed.rows.size, 0);
+});
+
+test('provider restriction during recording preflight is not presented as a sign-in or connection problem', async () => {
+  for (const failure of ['session_restricted', 'reconcile_restricted'] as const) {
+    const f = fixture(failure);
+    await assert.rejects(f.save(), { message: STORAGE_RESTRICTED_MESSAGE });
+    assert.equal(f.counters().uploads, 0); assert.equal(f.counters().inserts, 0);
+    assert.equal(f.checkpoint.captureId, RECORDING); assert.equal(f.checkpoint.uploadedPath, undefined);
+    assert.equal(f.blob.size, 110_000);
+  }
 });

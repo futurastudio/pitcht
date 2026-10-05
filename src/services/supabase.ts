@@ -4,6 +4,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { MAX_VIDEO_BYTES, storageUploadRejection } from '@/utils/recordingContract';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -92,10 +93,6 @@ export async function uploadVideo(
   }
 
   // 3. Check file size
-  // NOTE: Supabase Pro plan allows up to 500GB uploads (configurable in Storage Settings)
-  // Default is 50MB for Free tier - if you have Pro plan, increase this limit in Supabase dashboard
-  // and update MAX_FILE_SIZE constant below to match your configured limit
-  const MAX_FILE_SIZE = 200 * 1024 * 1024; // 200MB (adjust based on your Supabase plan)
   const MIN_FILE_SIZE = 100 * 1024; // 100KB minimum (prevents corrupted/incomplete videos)
   const fileSizeMB = (videoBlob.size / (1024 * 1024)).toFixed(2);
 
@@ -106,14 +103,9 @@ export async function uploadVideo(
     );
   }
 
-  if (videoBlob.size > MAX_FILE_SIZE) {
-    console.warn(`⚠️  Video file too large: ${fileSizeMB}MB (max: ${MAX_FILE_SIZE / (1024 * 1024)}MB)`);
-    console.warn(`💡 Current bitrate supports ~16 minutes of recording with this limit.`);
-    console.warn(`   To increase: Go to Supabase Dashboard → Storage Settings → Increase file size limit`);
+  if (videoBlob.size > MAX_VIDEO_BYTES) {
     throw new Error(
-      `Video file is too large (${fileSizeMB}MB, maximum: ${MAX_FILE_SIZE / (1024 * 1024)}MB). ` +
-      `Please keep recordings under the configured limit. ` +
-      `If you have Supabase Pro plan, you can increase this limit in Storage Settings.`
+      'This video exceeds the 50 MB upload limit. Keep this tab open and download the original, then record a shorter answer.'
     );
   }
 
@@ -125,16 +117,22 @@ export async function uploadVideo(
     const { data, error } = await supabase.storage.from('recordings').upload(fileName, videoBlob, { contentType, upsert: false });
     if (error) throw error;
     if (data?.path !== fileName) throw new Error('Upload confirmation was incomplete.');
-  } catch {
+  } catch (error) {
+    const rejection = storageUploadRejection(error);
+    if (rejection) throw rejection;
     // A timeout/duplicate may mean the upload committed. Verify this exact own path
     // and exact bytes; never overwrite it or silently accept a different recording.
+    let recoveryError: unknown;
     try {
       const { data, error } = await supabase.storage.from('recordings').download(fileName);
+      recoveryError = error;
       if (!error && data && await sameVideoBytes(videoBlob, data)) return fileName;
-    } catch {
+    } catch (error) {
+      recoveryError = error;
       // An uncertain read remains a retryable save failure with the same capture ID.
     }
-    throw new Error('Could not confirm this video upload. Keep this tab open and retry saving, or download the captured original.');
+    throw storageUploadRejection(recoveryError)
+      ?? new Error('Could not confirm this video upload. Keep this tab open and retry saving, or download the captured original.');
   }
 
   return fileName;

@@ -42,6 +42,7 @@ export default function InterviewPage() {
     const [pendingExitPath, setPendingExitPath] = useState<string | null>(null);
     const [isSavingRecording, setIsSavingRecording] = useState(false);
     const [saveFailed, setSaveFailed] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
     const savingRecordingRef = useRef(false);
     const recordingInProgressRef = useRef(false);
     const pendingCaptureRef = useRef<{ blob: Blob; audioBlob: Blob; eyeTracking: EyeTrackingMetrics | null; timestamp: number; saveCheckpoint: RecordingSaveCheckpoint } | null>(null);
@@ -423,6 +424,7 @@ export default function InterviewPage() {
             savingRecordingRef.current = true;
             setIsSavingRecording(true);
             setSaveFailed(false);
+            setSaveError(null);
             try {
                 // Stop Recording
                 recordingInProgressRef.current = false;
@@ -514,8 +516,7 @@ export default function InterviewPage() {
 
                     savedRecordingId = recording?.recordingId;
                     if (!savedRecordingId) {
-                        setSaveFailed(true);
-                        return;
+                        throw new Error(recording?.error || 'Could not save this answer. Keep this tab open and download the original before leaving.');
                     }
                     pendingCaptureRef.current = null;
 
@@ -651,7 +652,9 @@ export default function InterviewPage() {
                 }
             } catch (error) {
                 setSaveFailed(Boolean(pendingCaptureRef.current));
-                toast.error(error instanceof Error ? error.message : 'Could not save this answer. Keep this tab open and retry.');
+                const message = error instanceof Error ? error.message : 'Could not save this answer. Keep this tab open and retry.';
+                setSaveError(message);
+                toast.error(message);
             } finally {
                 savingRecordingRef.current = false;
                 setIsSavingRecording(false);
@@ -773,6 +776,7 @@ export default function InterviewPage() {
         discardUnsavedRecording(capture.saveCheckpoint.captureId);
         pendingCaptureRef.current = null;
         setSaveFailed(false);
+        setSaveError(null);
         setIsRecording(false);
         setRecordingDuration(0);
         // Stay on this question; no cloud mutation or automatic advance.
@@ -785,7 +789,7 @@ export default function InterviewPage() {
             <VideoFeed />
             {(isSavingRecording || saveFailed) && (
                 <div role="status" className="absolute inset-x-6 top-24 z-50 rounded-xl bg-black/90 border border-white/20 p-4 text-white">
-                    <p>{isSavingRecording ? 'Saving your recording. Keep this tab open…' : 'This answer has not finished saving. Keep this tab open; refreshing would lose the unsaved media.'}</p>
+                    <p>{isSavingRecording ? 'Saving your recording. Keep this tab open…' : saveError || 'This answer has not finished saving. Keep this tab open; refreshing would lose the unsaved media.'}</p>
                     {saveFailed && <div className="mt-3 flex flex-wrap gap-3">
                         <button className="rounded-full bg-white text-black px-4 py-2" onClick={handleToggleRecording}>Retry saving</button>
                         <button className="rounded-full border border-white/40 px-4 py-2" onClick={downloadCapturedOriginal}>Download original</button>

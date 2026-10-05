@@ -1,7 +1,6 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { toast } from 'sonner';
 import * as Sentry from '@sentry/nextjs';
 import { useAuth } from '@/context/AuthContext';
 import { createSession, saveRecording as saveRecordingToSupabase } from '@/services/sessionManager';
@@ -42,7 +41,7 @@ interface InterviewContextType {
     sessionContext: string; // Job description / presentation topic
     setSessionContext: (context: string) => void;
     recordings: Recording[];
-    addRecording: (recording: Recording) => Promise<{ recordingId?: string }>;
+    addRecording: (recording: Recording) => Promise<{ recordingId?: string; error?: string }>;
     updateRecording: (recordingId: string, updates: Partial<Recording>) => void;
     discardUnsavedRecording: (captureId: string) => void;
     clearSession: () => void;
@@ -121,7 +120,7 @@ function AccountInterviewProvider({ children, user }: { children: ReactNode; use
         initSession();
     }, [user, sessionType, questions, sessionId]); // sessionContext excluded intentionally
 
-    const addRecording = async (recording: Recording): Promise<{ recordingId?: string }> => {
+    const addRecording = async (recording: Recording): Promise<{ recordingId?: string; error?: string }> => {
         // Always add to local state first (immediate feedback)
         // Retry the same captured answer without accumulating duplicate local entries.
         const retained = { ...recording, audioBlob: recording.audioBlob && recording.audioBlob.size <= MAX_TRANSCRIPTION_BYTES ? recording.audioBlob : undefined };
@@ -182,10 +181,9 @@ function AccountInterviewProvider({ children, user }: { children: ReactNode; use
                         duration: recording.duration,
                     },
                 });
-                toast.error('Recording upload failed', {
-                    description: 'Keep this tab open. Your captured answer is still here; check your connection and choose Retry saving. Refreshing now would lose the unsaved media.',
-                });
-                return {};
+                // Keep the captured bytes and let the page display the specific save
+                // failure persistently beside its download/retry recovery controls.
+                return { error: error instanceof Error ? error.message : 'Could not save this answer. Keep this tab open and download the original before leaving.' };
             }
         } else {
             // Tracking gap: we had a user/session but no blob, or not signed in.

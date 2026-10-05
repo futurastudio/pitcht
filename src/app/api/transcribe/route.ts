@@ -5,9 +5,9 @@ import { authenticate, fail, requireRecordingId } from '@/server/http';
 import { ApiError } from '@/server/errors';
 import { getAdmin } from '@/server/clients';
 import { ownedRecording, reserveOperation, releaseOperation } from '@/server/practice';
+import { MAX_TRANSCRIPTION_BYTES } from '@/utils/recordingContract';
 
 export const maxDuration = 60;
-const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
 
 export async function POST(request: Request) {
   let token: string | null = null;
@@ -15,13 +15,13 @@ export async function POST(request: Request) {
   try {
     const user = await authenticate(request);
     userId = user.id;
-    if (Number(request.headers.get('content-length')) > MAX_AUDIO_BYTES + 64_000) throw new ApiError(413, 'Audio upload is too large.');
+    if (Number(request.headers.get('content-length')) > MAX_TRANSCRIPTION_BYTES + 64_000) throw new ApiError(413, 'Audio upload is too large.');
     const form = await request.formData();
     const id = requireRecordingId(form.get('recordingId'));
     let { recording, question } = await ownedRecording(id, user.id);
     const audio = form.get('audio');
     if (!(audio instanceof File) || audio.size < 1) throw new ApiError(400, 'An audio file is required.');
-    if (audio.size > MAX_AUDIO_BYTES) throw new ApiError(413, 'Audio must be at most 4 MiB. Open the saved answer from History and retry to compress its audio.', 'audio_too_large');
+    if (audio.size > MAX_TRANSCRIPTION_BYTES) throw new ApiError(413, 'Audio must be at most 4 MiB. Open the saved answer from History and retry to compress its audio.', 'audio_too_large');
     const mime = audio.type.split(';')[0].trim().toLowerCase();
     if (!['audio/webm','audio/mpeg','audio/mp4','audio/wav','audio/ogg','video/webm'].includes(mime)) {
       throw new ApiError(400, 'Unsupported audio format.');

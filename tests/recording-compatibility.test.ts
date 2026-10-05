@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { loadSource, USER_A, RECORDING } from './module-loader';
-import { CLIENT_UPGRADE_MESSAGE, MAX_TRANSCRIPTION_BYTES, recordingMetadata, transcriptionForm } from '../src/utils/recordingContract';
+import { CLIENT_UPGRADE_MESSAGE, MAX_TRANSCRIPTION_BYTES, STORAGE_RESTRICTED_MESSAGE, recordingMetadata, transcriptionForm } from '../src/utils/recordingContract';
 import { safeFeedbackDetails } from '../src/utils/feedbackValidation';
 import { supportedAudioMime } from '../src/utils/audioRecovery';
 
@@ -127,14 +127,15 @@ test('upload failure retains captured bytes, blocks advance/provider work, and r
   visit(source); assert.ok(callback);
   const video = new Blob(['retained video']); const audio = new Blob(['retained audio']);
   let stops = 0; let providerCalls = 0; let attempts = 0; let advances = 0;
+  const saveErrors: Array<string | null> = [];
   const captured: Array<{ videoBlob: Blob; audioBlob: Blob; timestamp: number; saveCheckpoint: { captureId: string } }> = [];
   const state = {
     crypto: { randomUUID: () => RECORDING },
     isRecording: true, sessionId: 'session', currentQuestionIndex: 0, questions: [{}, {}], currentQuestion: { id: 'question', text: 'Question?' },
     savingRecordingRef: { current: false }, recordingInProgressRef: { current: true }, pendingCaptureRef: { current: null as unknown }, pendingTranscriptionsRef: { current: 0 }, pendingDbUpdatesRef: { current: [] as unknown[] },
-    setIsSavingRecording: () => {}, setSaveFailed: () => {}, setIsRecording: (v: boolean) => { state.isRecording = v; }, setCountdown: () => {}, setIsTranscribing: () => {},
+    setIsSavingRecording: () => {}, setSaveFailed: () => {}, setSaveError: (value: string | null) => saveErrors.push(value), setIsRecording: (v: boolean) => { state.isRecording = v; }, setCountdown: () => {}, setIsTranscribing: () => {},
     setCurrentQuestionIndex: () => { advances++; }, window: { stopRecording: async () => { stops++; return { blob: video, audioBlob: audio, eyeTracking: null }; } },
-    analyzeVideoPath: async () => null, addRecording: async (recording: { videoBlob: Blob; audioBlob: Blob; timestamp: number; saveCheckpoint: { captureId: string } }) => { captured.push(recording); return ++attempts === 1 ? {} : { recordingId: RECORDING }; },
+    analyzeVideoPath: async () => null, addRecording: async (recording: { videoBlob: Blob; audioBlob: Blob; timestamp: number; saveCheckpoint: { captureId: string } }) => { captured.push(recording); return ++attempts === 1 ? { error: STORAGE_RESTRICTED_MESSAGE } : { recordingId: RECORDING }; },
     transcribeRecording: async () => { providerCalls++; return { transcript: '', duration: 0 }; }, console,
     toast: { error: () => {}, info: () => {} }, Sentry: { captureException: () => {} },
   };
@@ -142,11 +143,13 @@ test('upload failure retains captured bytes, blocks advance/provider work, and r
   const invoke = runInNewContext(compiled, state) as () => Promise<void>;
   await invoke();
   assert.equal(advances, 0); assert.equal(providerCalls, 0); assert.equal(stops, 1); assert.ok(state.pendingCaptureRef.current);
+  assert.equal(saveErrors.at(-1), STORAGE_RESTRICTED_MESSAGE);
   await invoke(); await flush();
   assert.equal(advances, 1); assert.equal(providerCalls, 1); assert.equal(stops, 1); assert.equal(state.pendingCaptureRef.current, null);
   assert.equal(captured[0].videoBlob, video); assert.equal(captured[1].videoBlob, video);
   assert.equal(captured[0].audioBlob, audio); assert.equal(captured[0].timestamp, captured[1].timestamp);
   assert.equal(captured[0].saveCheckpoint, captured[1].saveCheckpoint); assert.equal(captured[0].saveCheckpoint.captureId, RECORDING);
+  assert.equal(saveErrors.at(-1), null);
 });
 
 test('transcription retry keeps compressed audio on API failure and discards a late result after selection changes', async () => {
@@ -208,7 +211,7 @@ test('permanent save failure allows explicit discard only after confirmation, re
   const state = {
     pendingCaptureRef: { current: failed as object | null }, savingRecordingRef: { current: false },
     window: { confirm: (message: string) => { assert.match(message, /Download the original first/); prompts++; return confirmed; } },
-    discardUnsavedRecording, setSaveFailed: (value: boolean) => { cleared = !value; }, setIsRecording: () => {}, setRecordingDuration: () => {},
+    discardUnsavedRecording, setSaveFailed: (value: boolean) => { cleared = !value; }, setSaveError: () => {}, setIsRecording: () => {}, setRecordingDuration: () => {},
     router: { push: () => { throw new Error('Must stay on this question'); } },
     setCurrentQuestionIndex: () => { throw new Error('Must not advance'); },
   };
