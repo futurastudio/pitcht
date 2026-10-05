@@ -1,10 +1,19 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "codex/security-billing-repair": false
+    }
+  },
   "buildCommand": "next build",
   "devCommand": "next dev",
   "installCommand": "npm install",
   "framework": "nextjs",
   "regions": ["iad1"],
   "crons": [
+    {
+      "path": "/api/cron/billing-analytics",
+      "schedule": "0 * * * *"
+    },
     {
       "path": "/api/cron/sms-check",
       "schedule": "0 */6 * * *"

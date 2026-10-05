@@ -1,0 +1,16 @@
+# Billing revision conflict repair — October 3
+
+The genuine sandbox checkout exposed a PostgREST 13.0.7 failure: raising transaction SQLSTATE `40001` for a stale application revision caused the database transaction to retry with the same stale input. Concurrent verification could time out without returning control to the application.
+
+The billing RPC now raises `PT409`, which [PostgREST maps to HTTP 409](https://docs.postgrest.org/en/v13/references/errors.html). The application handles that code with its existing three-attempt limit, re-reading both the stored revision and current Stripe subscription before each attempt. Other persistence failures still fail closed. The change leaves ownership checks, advisory locks, event deduplication and transactional purchase outbox writes intact. Both SQL source copies contain the identical function.
+
+Validation:
+
+- Offline fixtures prove refreshed database revisions and changed provider state are used, and three persistent conflicts stop without delivering a purchase.
+- The opt-in `tests/billing-postgrest.test.ts` passed against the isolated rehearsal's real PostgREST 13.0.7, PostgreSQL 17.6, local Auth and REST API in 1.9 seconds. A stale write returns `409/PT409` within three seconds and leaves revision, event ledger and outbox unchanged. Two simultaneous requests execute the actual verification route, authentication, budget and billing code; both succeed within five seconds, require exactly three provider reads, persist the newer snapshot and leave one purchase outbox entry. Duplicate event persistence remains idempotent. Only Stripe responses and analytics delivery are mocked in this focused regression.
+- The REST test requires `PITCHT_TEST_POSTGREST_URL=http://127.0.0.1:55421`, dedicated `PITCHT_TEST_POSTGREST_SERVICE_KEY` and `PITCHT_TEST_POSTGREST_ANON_KEY` values, and configured rehearsal price IDs. It creates and removes only its own synthetic fixture user/rows; it does not reset the schema. Default CI skips this opt-in test. Never supply hosted credentials.
+- Full offline suite: 84 passed, 0 failed; 29 opt-in database/REST tests skipped. TypeScript and a clean production build with synthetic credentials passed; ESLint has 0 errors and the same 13 existing warnings. The isolated REST regression ran separately; historical schema-reset SQL suites were not rerun.
+
+The local rehearsal received only the exact function replacement, after matching its installed body to the prior committed source and verifying unchanged function owner, ACL, invoker mode and search path. The preserved genuine sandbox subscription and its prior evidence remain available for the remaining lifecycle checks. This focused REST regression does not establish completion of those genuine Stripe lifecycle checks.
+
+Current `atomic-cutover.sql` SHA256: `891cb51f566d7ab5aea2bbd023c6b807a266502a45030254edcdc283b4edb371`. Earlier documentation hashes describe earlier artifacts. Deploy the revised SQL and application as part of the existing coordinated cutover; mixed versions can return billing errors. The branch deployment guard and temporary account-deletion containment remain enabled. Production backup, cutover controls and genuine lifecycle evidence remain release prerequisites; no production migration or deployment was performed for this repair.

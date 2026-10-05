@@ -8,17 +8,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { getAdmin } from '@/server/clients';
+import { fail, readJson } from '@/server/http';
 
 const SITE_URL = 'https://pitcht.us';
 const APP_URL = process.env.NEXT_PUBLIC_URL || 'https://app.pitcht.us';
 
-// CORS headers — allow requests from the Framer marketing site (pitcht.us)
+// Browser compatibility for the marketing site; CORS is not anti-bot protection.
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': 'https://pitcht.us',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
@@ -32,7 +28,7 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { email } = await request.json();
+    const { email } = await readJson(request, 2048);
 
     // Basic validation
     if (!email || typeof email !== 'string') {
@@ -41,45 +37,45 @@ export async function POST(request: NextRequest) {
 
     const normalized = email.trim().toLowerCase();
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalized)) {
+    if (normalized.length > 254 || !emailRegex.test(normalized)) {
       return NextResponse.json({ error: 'Please enter a valid email address.' }, { status: 400, headers: CORS_HEADERS });
     }
 
-    // Insert into waitlist (ignore duplicate — user may have already signed up)
-    const { error: dbError } = await supabase
+    // The unique email constraint decides which concurrent request may send.
+    const { error: dbError } = await getAdmin()
       .from('waitlist')
       .insert({ email: normalized, source: 'mobile_download' })
       .select()
       .single();
 
-    if (dbError && dbError.code !== '23505') {
-      // 23505 = unique_violation (already on list) — not a real error
-      console.error('Waitlist DB error:', dbError);
-      return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500, headers: CORS_HEADERS });
+    if (dbError?.code === '23505') {
+      return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
     }
+    if (dbError) throw new Error('Waitlist enrollment unavailable');
 
     // Send email via Resend
     const resendApiKey = process.env.RESEND_API_KEY;
     if (resendApiKey) {
-      const emailHtml = buildEmailHtml({ email: normalized });
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${resendApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: 'Pitcht <contact@pitcht.us>',
-          to: normalized,
-          subject: 'Your Pitcht download link is here 🎤',
-          html: emailHtml,
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.text();
-        console.error('Resend error:', err);
-        // Don't fail the request — email is a nice-to-have, DB insert is the critical part
+      try {
+        const res = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: 'Pitcht <contact@pitcht.us>',
+            to: normalized,
+            subject: 'Your Pitcht download link is here 🎤',
+            html: buildEmailHtml(),
+          }),
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!res.ok) console.error('[waitlist] Welcome email unavailable');
+        await res.body?.cancel();
+      } catch {
+        // Enrollment succeeded; replay must not send again, even after an uncertain response.
+        console.error('[waitlist] Welcome email unavailable');
       }
     } else {
       console.warn('RESEND_API_KEY not set — skipping email send');
@@ -87,12 +83,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
   } catch (error) {
-    console.error('Waitlist route error:', error);
-    return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500, headers: CORS_HEADERS });
+    const response = fail(error);
+    Object.entries(CORS_HEADERS).forEach(([key, value]) => response.headers.set(key, value));
+    return response;
   }
 }
 
-function buildEmailHtml({ email }: { email: string }): string {
+function buildEmailHtml(): string {
   return `
 <!DOCTYPE html>
 <html lang="en">

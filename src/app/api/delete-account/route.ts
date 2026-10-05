@@ -1,219 +1,104 @@
-/**
- * API Route: Delete Account
- * POST /api/delete-account
- *
- * Permanently deletes user account and all associated data (GDPR compliance)
- *
- * Security:
- * - Requires authentication
- * - CSRF Protection
- * - Rate limiting
- *
- * Deletes:
- * - All sessions and recordings
- * - All video files from storage
- * - Subscription (cancels with Stripe)
- * - User account
+import { NextResponse } from 'next/server';
+import { authenticate, fail } from '@/server/http';
+import { getAdmin, getStripe } from '@/server/clients';
+import { ApiError } from '@/server/errors';
+import { stripeId } from '@/server/billingPolicy';
+import { ACCOUNT_DELETION_ENABLED, ACCOUNT_DELETION_UNAVAILABLE_MESSAGE } from '@/utils/accountDeletion';
+
+export const maxDuration = 60;
+const PAGE_SIZE = 100;
+
+/** No local identity/binding is removed until required external cleanup succeeds.
+ * Partial cancellation/removal is safe to repeat after a lost response or outage.
  */
-
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import Stripe from 'stripe';
-import rateLimiter, { RateLimitPresets, getUserIdentifier, formatResetTime } from '@/middleware/rateLimiter';
-
-// Use service role for admin operations
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
-    // Rate Limiting (prevent abuse)
-    const userKey = getUserIdentifier(request);
-    const rateLimit = rateLimiter.check(userKey, RateLimitPresets.AUTH_ENDPOINT);
-
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        {
-          error: 'Rate limit exceeded',
-          message: `Too many requests. Please try again in ${formatResetTime(rateLimit.resetAt)}`,
-        },
-        { status: 429 }
-      );
+    const user = await authenticate(request);
+    if (!ACCOUNT_DELETION_ENABLED) {
+      throw new ApiError(503, ACCOUNT_DELETION_UNAVAILABLE_MESSAGE, 'account_deletion_unavailable');
     }
-
-    // Get authenticated user
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'Please log in to delete your account' },
-        { status: 401 }
-      );
-    }
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized', message: 'Invalid authentication token' },
-        { status: 401 }
-      );
-    }
-
-    const userId = user.id;
-    const userEmail = user.email;
-
-    console.log(`🗑️ Starting account deletion for user: ${userEmail} (${userId})`);
-
-    // Step 1: Get all recordings to delete video files
-    const { data: recordings, error: recordingsError } = await supabaseAdmin
-      .from('recordings')
-      .select('video_path, sessions!inner(user_id)')
-      .eq('sessions.user_id', userId);
-
-    if (!recordingsError && recordings && recordings.length > 0) {
-      console.log(`📹 Deleting ${recordings.length} video files from storage...`);
-
-      // Delete video files from storage
-      const videoPaths = recordings
-        .map(r => r.video_path)
-        .filter(Boolean) as string[];
-
-      if (videoPaths.length > 0) {
-        const { error: storageError } = await supabaseAdmin.storage
-          .from('recordings')
-          .remove(videoPaths);
-
-        if (storageError) {
-          console.error('⚠️ Error deleting videos from storage:', storageError);
-          // Continue anyway - database cleanup is more important
-        } else {
-          console.log(`✅ Deleted ${videoPaths.length} videos from storage`);
+    const admin = getAdmin();
+    const bucket = admin.storage.from('recordings');
+    const subscriptions: Array<{ stripe_subscription_id: string; stripe_customer_id: string }> = [];
+    const paths = new Set<string>();
+    const ownedPath = (value: unknown): string => {
+      if (typeof value !== 'string' || !value.startsWith(`${user.id}/`) ||
+          value.split('/').some(part => !part || part === '.' || part === '..')) {
+        throw new Error('Recording path requires ownership reconciliation');
+      }
+      return value;
+    };
+    // Finish inventory before performing any destructive operation. Do not use
+    // single(): canonical billing retains canceled subscriptions as history.
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data, error } = await admin.from('subscriptions').select('stripe_subscription_id,stripe_customer_id')
+        .eq('user_id', user.id).order('id').range(offset, offset + PAGE_SIZE - 1);
+      if (error || !data) throw new Error('Billing inventory unavailable');
+      for (const row of data) {
+        if (!/^sub_[a-zA-Z0-9]+$/.test(row.stripe_subscription_id) || !/^cus_[a-zA-Z0-9]+$/.test(row.stripe_customer_id)) {
+          throw new Error('Billing binding requires reconciliation');
         }
+        subscriptions.push(row);
       }
-
-      // Also try to delete entire user folder
-      try {
-        const { data: files } = await supabaseAdmin.storage
-          .from('recordings')
-          .list(userId);
-
-        if (files && files.length > 0) {
-          const folderPaths = files.map(f => `${userId}/${f.name}`);
-          await supabaseAdmin.storage.from('recordings').remove(folderPaths);
-          console.log(`✅ Cleaned up user folder: ${userId}/`);
+      if (data.length < PAGE_SIZE) break;
+    }
+    for (let offset = 0; ; offset += PAGE_SIZE) {
+      const { data, error } = await admin.from('recordings').select('video_url,sessions!inner(user_id)')
+        .eq('sessions.user_id', user.id).order('id').range(offset, offset + PAGE_SIZE - 1);
+      if (error || !data) throw new Error('Recording inventory unavailable');
+      for (const row of data) if (row.video_url) paths.add(ownedPath(row.video_url));
+      if (data.length < PAGE_SIZE) break;
+    }
+    // Include orphaned uploads and nested session/capture folders, beyond the
+    // default first Storage page. Enumerate first so deletion cannot shift pages.
+    const pending = [user.id];
+    while (pending.length) {
+      const folder = pending.pop()!;
+      for (let offset = 0; ; offset += PAGE_SIZE) {
+        const { data, error } = await bucket.list(folder, { limit: PAGE_SIZE, offset, sortBy: { column: 'name', order: 'asc' } });
+        if (error || !data) throw new Error('Storage inventory unavailable');
+        for (const entry of data) {
+          const path = ownedPath(`${folder}/${entry.name}`);
+          if (entry.id) paths.add(path); else pending.push(path);
         }
-      } catch (err) {
-        console.warn('⚠️ Error cleaning up user folder:', err);
+        if (data.length < PAGE_SIZE) break;
       }
     }
-
-    // Step 2: Delete all sessions (CASCADE will delete recordings and analyses)
-    const { error: sessionsError } = await supabaseAdmin
-      .from('sessions')
-      .delete()
-      .eq('user_id', userId);
-
-    if (sessionsError) {
-      console.error('❌ Error deleting sessions:', sessionsError);
-      return NextResponse.json(
-        { error: 'Failed to delete sessions', details: sessionsError.message },
-        { status: 500 }
-      );
-    }
-    console.log('✅ Deleted all sessions and recordings from database');
-
-    // Step 3: Cancel Stripe subscription if exists
-    const { data: subscription } = await supabaseAdmin
-      .from('subscriptions')
-      .select('stripe_subscription_id, stripe_customer_id')
-      .eq('user_id', userId)
-      .single();
-
-    if (subscription?.stripe_subscription_id) {
-      try {
-        console.log(`💳 Canceling Stripe subscription: ${subscription.stripe_subscription_id}`);
-        await stripe.subscriptions.cancel(subscription.stripe_subscription_id);
-        console.log('✅ Stripe subscription canceled');
-      } catch (stripeError: unknown) {
-        console.error('⚠️ Error canceling Stripe subscription:', stripeError instanceof Error ? stripeError.message : stripeError);
-        // Continue anyway - subscription will be deleted from DB
+    const stripe = subscriptions.length ? getStripe() : null;
+    // Validate every canonical binding before cancelling even the first one.
+    const verified = [];
+    for (const binding of subscriptions) {
+      const subscription = await stripe!.subscriptions.retrieve(binding.stripe_subscription_id);
+      if (subscription.id !== binding.stripe_subscription_id || stripeId(subscription.customer) !== binding.stripe_customer_id ||
+          (subscription.metadata.userId && subscription.metadata.userId !== user.id)) {
+        throw new ApiError(409, 'Billing ownership needs support review before deletion.', 'billing_owner_mismatch');
       }
-
-      // Delete customer from Stripe (optional but cleaner)
-      if (subscription.stripe_customer_id) {
-        try {
-          await stripe.customers.del(subscription.stripe_customer_id);
-          console.log('✅ Stripe customer deleted');
-        } catch (err) {
-          console.warn('⚠️ Error deleting Stripe customer:', err);
-        }
-      }
+      verified.push(subscription);
     }
-
-    // Step 4: Delete subscription record
-    const { error: subError } = await supabaseAdmin
-      .from('subscriptions')
-      .delete()
-      .eq('user_id', userId);
-
-    if (subError) {
-      console.warn('⚠️ Error deleting subscription record:', subError);
-      // Continue anyway
-    } else {
-      console.log('✅ Deleted subscription record');
+    for (const subscription of verified) {
+      if (['canceled', 'incomplete_expired'].includes(subscription.status)) continue;
+      const canceled = await stripe!.subscriptions.cancel(subscription.id, { invoice_now: false, prorate: false });
+      if (canceled.id !== subscription.id || canceled.status !== 'canceled') throw new Error('Cancellation not confirmed');
     }
-
-    // Step 5: Delete user account (final step - no going back!)
-    const { error: deleteUserError } = await supabaseAdmin.auth.admin.deleteUser(userId);
-
-    if (deleteUserError) {
-      console.error('❌ Error deleting user account:', deleteUserError);
-      return NextResponse.json(
-        { error: 'Failed to delete user account', details: deleteUserError.message },
-        { status: 500 }
-      );
+    const files = [...paths];
+    for (let offset = 0; offset < files.length; offset += PAGE_SIZE) {
+      const { error } = await bucket.remove(files.slice(offset, offset + PAGE_SIZE));
+      if (error) throw new Error('Media removal unavailable');
     }
-
-    console.log(`✅ Account deletion complete for ${userEmail}`);
-    console.log('📊 Deletion summary:');
-    console.log(`   - Sessions: deleted`);
-    console.log(`   - Recordings: deleted`);
-    console.log(`   - Videos: deleted from storage`);
-    console.log(`   - Subscription: ${subscription ? 'canceled and deleted' : 'none'}`);
-    console.log(`   - User account: deleted`);
-
-    return NextResponse.json({
-      success: true,
-      message: 'Your account and all associated data have been permanently deleted',
-      deletedAt: new Date().toISOString(),
-    });
-
+    // Removing a Storage object is idempotent. A failed/lost response leaves the
+    // Auth account and billing bindings available for the next attempt.
+    const { error: sessionsError } = await admin.from('sessions').delete().eq('user_id', user.id);
+    if (sessionsError) throw new Error('Session removal unavailable');
+    // Auth deletion cascades the local billing rows and refresh sessions. Keeping
+    // bindings until this final step also handles a failure of the Auth service.
+    const { error: userError } = await admin.auth.admin.deleteUser(user.id);
+    if (userError) throw new Error('Account removal unavailable');
+    return NextResponse.json({ success: true, message: 'Your account and saved recordings have been deleted. Linked subscriptions are canceled.', deletedAt: new Date().toISOString() });
   } catch (error) {
-    console.error('❌ Account deletion error:', error);
-
-    const errorMessage = error instanceof Error
-      ? error.message
-      : 'An unexpected error occurred while deleting your account';
-
-    return NextResponse.json(
-      {
-        error: 'Account deletion failed',
-        message: errorMessage,
-      },
-      { status: 500 }
-    );
+    if (error instanceof ApiError) return fail(error);
+    console.error('[delete-account] Cleanup incomplete or unconfirmed');
+    return fail(new ApiError(503, 'Deletion could not be completed or confirmed. Please retry or contact support. Some subscriptions may already be canceled and recordings removed.', 'deletion_incomplete'));
   }
 }
 
-// Prevent GET requests
-export async function GET() {
-  return NextResponse.json(
-    { error: 'Method not allowed. Use POST to delete account.' },
-    { status: 405 }
-  );
-}
+export async function GET() { return NextResponse.json({ error: 'Use POST.' }, { status: 405 }); }

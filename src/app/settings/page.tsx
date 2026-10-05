@@ -1,5 +1,8 @@
 'use client';
 
+import { ACCOUNT_CHANGE_EVENT, UNSAVED_ACCOUNT_MESSAGE } from '@/utils/accountRecovery';
+import { ACCOUNT_DELETION_ENABLED, ACCOUNT_DELETION_UNAVAILABLE_MESSAGE } from '@/utils/accountDeletion';
+
 import { apiFetch } from '@/utils/api';
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -159,12 +162,17 @@ export default function SettingsPage() {
   };
 
   const handleDeleteAccount = async () => {
+    if (!ACCOUNT_DELETION_ENABLED) return;
     if (!user) return;
     if (deleteConfirmText !== 'DELETE') {
       toast.error('Please type DELETE to confirm account deletion.');
       return;
     }
 
+    if (!window.dispatchEvent(new Event(ACCOUNT_CHANGE_EVENT, { cancelable: true }))) {
+      toast.error(UNSAVED_ACCOUNT_MESSAGE);
+      return;
+    }
     setIsDeleting(true);
     try {
       // Get current session token from Supabase
@@ -197,7 +205,7 @@ export default function SettingsPage() {
         router.push('/');
       } else {
         console.error('Delete account error:', data.error);
-        toast.error(data.message || 'Failed to delete account. Please try again or contact support.');
+        toast.error(data.error || data.message || 'Failed to delete account. Please try again or contact support.');
         setIsDeleting(false);
         setShowDeleteConfirm(false);
         setDeleteConfirmText('');
@@ -292,7 +300,7 @@ export default function SettingsPage() {
                 {subscriptionStatus.isPremium && (
                   <span className="inline-flex items-center gap-2">
                     <span className="w-2 h-2 bg-white/60 rounded-full"></span>
-                    Pro
+                    {subscriptionStatus.entitlementSource === 'internal_test' ? 'Pro (internal test)' : 'Pro'}
                   </span>
                 )}
                 {subscriptionStatus.isTrialing && !subscriptionStatus.isPremium && (
@@ -350,7 +358,7 @@ export default function SettingsPage() {
 
         {subscriptionStatus.isPremium && (
           <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 mb-6">
-            <h2 className="text-2xl font-bold text-white mb-6">Pro Subscription</h2>
+            <h2 className="text-2xl font-bold text-white mb-6">{subscriptionStatus.entitlementSource === 'internal_test' ? 'Internal test Pro access' : 'Pro Subscription'}</h2>
 
             {/* Feature List */}
             <div className="mb-6">
@@ -388,6 +396,10 @@ export default function SettingsPage() {
             </div>
 
             {/* Manage Subscription Button */}
+            {subscriptionStatus.entitlementSource === 'internal_test' ? (
+              <p className="text-white/60 text-sm">Internal test access has no Stripe billing subscription.</p>
+            ) : (
+            <>
             <button
               onClick={handleManageSubscription}
               disabled={isLoadingPortal}
@@ -398,6 +410,8 @@ export default function SettingsPage() {
             <p className="text-white/50 text-sm mt-3 text-center">
               Update payment method, view invoices, or cancel subscription
             </p>
+            </>
+            )}
           </div>
         )}
 
@@ -525,15 +539,23 @@ export default function SettingsPage() {
             {/* Delete Account */}
             <div className="pt-6 border-t border-red-500/30">
               <h3 className="text-lg font-semibold text-red-400 mb-2">Delete Account</h3>
-              <p className="text-white/60 text-sm mb-4">
-                Permanently delete your account and all associated data. This action cannot be undone.
-              </p>
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="px-6 py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 transition-all duration-200 rounded-full font-semibold"
-              >
-                Delete My Account
-              </button>
+              {!ACCOUNT_DELETION_ENABLED ? (
+                <p className="text-white/60 text-sm">
+                  {ACCOUNT_DELETION_UNAVAILABLE_MESSAGE} You can still manage or cancel your subscription in the billing section above.
+                </p>
+              ) : (
+                <>
+                  <p className="text-white/60 text-sm mb-4">
+                    Permanently delete your account and saved recordings, and cancel linked subscriptions. This action cannot be undone.
+                  </p>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="px-6 py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 transition-all duration-200 rounded-full font-semibold"
+                  >
+                    Delete My Account
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -550,7 +572,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Delete Account Confirmation Modal */}
-      {showDeleteConfirm && (
+      {ACCOUNT_DELETION_ENABLED && showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
           <div
@@ -574,9 +596,10 @@ export default function SettingsPage() {
               <ul className="list-disc list-inside space-y-2 text-white/60 text-sm ml-4">
                 <li>All your practice sessions and recordings</li>
                 <li>All video files and transcripts</li>
-                <li>Your subscription and billing history</li>
+                <li>Your subscription records in Pitcht</li>
                 <li>Your account and profile data</li>
               </ul>
+              <p className="text-white/60 text-sm">Linked subscriptions will be canceled. Payment records remain with Stripe.</p>
               <p className="text-red-400 font-semibold inline-flex items-center gap-1.5">
                 <AlertTriangle className="w-4 h-4" strokeWidth={1.75} />
                 This action cannot be undone!

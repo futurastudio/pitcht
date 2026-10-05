@@ -126,7 +126,13 @@ export default function SessionSetupModal({ isOpen, onClose, sessionType, sessio
 
         // Gate 2: Authenticated but on free tier — check session limit
         if (!subscriptionStatus.isPremium && !subscriptionStatus.isTrialing) {
-            const check = await canUserStartSession(user.id);
+            let check;
+            try { check = await canUserStartSession(user.id); }
+            catch (error) {
+                setError(error instanceof Error ? error.message : 'Access could not be verified.');
+                setIsGenerating(false);
+                return;
+            }
 
             if (!check.allowed) {
                 setShowPaywall(true);

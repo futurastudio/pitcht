@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import { hasInternalTestAccess } from '@/server/internalTest';
 
 export const maxDuration = 30;
 
@@ -72,19 +73,22 @@ export async function POST(request: Request) {
       );
     }
 
+    if (await hasInternalTestAccess(authUser.id)) {
+      return NextResponse.json({ error: 'Internal test Pro access has no Stripe billing subscription.' }, { status: 409 });
+    }
+
     // Get user's subscription to find their Stripe customer ID
     const { data: subscription, error } = await supabaseAdmin
       .from('subscriptions')
       .select('stripe_customer_id')
       .eq('user_id', userId)
-      .in('status', ['active', 'trialing'])
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
     if (error || !subscription) {
       return NextResponse.json(
-        { error: 'No active subscription found. Please subscribe to a plan first.' },
+        { error: 'No billing account found.' },
         { status: 404 }
       );
     }

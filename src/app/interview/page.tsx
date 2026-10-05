@@ -1,5 +1,7 @@
 'use client';
 
+import { ACCOUNT_CHANGE_EVENT } from '@/utils/accountRecovery';
+
 import { apiFetch } from '@/utils/api';
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -14,14 +16,16 @@ import { supabase } from '@/services/supabase';
 import { analyzeVideoPath } from '@/services/emotionAnalyzer';
 import { calculatePresenceScore } from '@/services/videoAnalyzer';
 import { analyzeSpeech, SpeechMetrics } from '@/services/speechAnalyzer';
-import { completeSession } from '@/services/sessionManager';
+import { completeSession, type RecordingSaveCheckpoint } from '@/services/sessionManager';
 import { trackEvent, AnalyticsEvents } from '@/utils/analytics';
 import { toast } from 'sonner';
 import * as Sentry from '@sentry/nextjs';
+import { transcriptionForm } from '@/utils/recordingContract';
+import type { EyeTrackingMetrics } from '@/services/faceTracker';
 
 export default function InterviewPage() {
     const router = useRouter();
-    const { addRecording, updateRecording, sessionType, sessionContext, questions, sessionId, recordings } = useInterview();
+    const { addRecording, updateRecording, discardUnsavedRecording, sessionType, sessionContext, questions, sessionId, recordings } = useInterview();
     const { user, loading: authLoading } = useAuth();
     const { cameraStatus } = useCameraStatus();
 
@@ -36,6 +40,12 @@ export default function InterviewPage() {
     const [countdown, setCountdown] = useState<number | null>(null); // Countdown before recording starts
     const [showExitDialog, setShowExitDialog] = useState(false);
     const [pendingExitPath, setPendingExitPath] = useState<string | null>(null);
+    const [isSavingRecording, setIsSavingRecording] = useState(false);
+    const [saveFailed, setSaveFailed] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+    const savingRecordingRef = useRef(false);
+    const recordingInProgressRef = useRef(false);
+    const pendingCaptureRef = useRef<{ blob: Blob; audioBlob: Blob; eyeTracking: EyeTrackingMetrics | null; timestamp: number; saveCheckpoint: RecordingSaveCheckpoint } | null>(null);
 
     // Mirror recordings.length into a ref so it's readable synchronously
     // inside the sendBeacon callback (which fires during page unload).
@@ -99,7 +109,7 @@ export default function InterviewPage() {
     // closed tab before transcripts were saved → analysis page empty).
     useEffect(() => {
         const handler = (e: BeforeUnloadEvent) => {
-            if (pendingTranscriptionsRef.current > 0) {
+            if (pendingTranscriptionsRef.current > 0 || recordingInProgressRef.current || savingRecordingRef.current || pendingCaptureRef.current) {
                 e.preventDefault();
                 // returnValue is the legacy way to trigger the prompt;
                 // some browsers ignore custom strings and show a generic
@@ -108,8 +118,12 @@ export default function InterviewPage() {
                 return '';
             }
         };
+        const preventAccountChange = (event: Event) => {
+            if (pendingTranscriptionsRef.current > 0 || recordingInProgressRef.current || savingRecordingRef.current || pendingCaptureRef.current) event.preventDefault();
+        };
         window.addEventListener('beforeunload', handler);
-        return () => window.removeEventListener('beforeunload', handler);
+        window.addEventListener(ACCOUNT_CHANGE_EVENT, preventAccountChange);
+        return () => { window.removeEventListener('beforeunload', handler); window.removeEventListener(ACCOUNT_CHANGE_EVENT, preventAccountChange); };
     }, []);
 
     // Mark session as completed when user closes/leaves the tab mid-session
@@ -164,6 +178,11 @@ export default function InterviewPage() {
         window.history.pushState({ pitcht_interview: true }, '');
 
         const handlePopState = () => {
+            if (recordingInProgressRef.current || savingRecordingRef.current || pendingCaptureRef.current) {
+                window.history.pushState({ pitcht_interview: true }, '');
+                toast.info('Keep this tab open until your recording is saved.');
+                return;
+            }
             if (recordingsCountRef.current === 0) {
                 // Re-push the sentinel to keep the user here, then show dialog.
                 window.history.pushState({ pitcht_interview: true }, '');
@@ -223,6 +242,7 @@ export default function InterviewPage() {
             } catch (error) {
                 lastError = error as Error;
 
+                if (lastError instanceof Error && 'retryable' in lastError && !lastError.retryable) throw lastError;
                 if (attempt < maxAttempts) {
                     // Exponential backoff: 2s, 4s, 8s
                     const delayMs = Math.min(
@@ -241,31 +261,15 @@ export default function InterviewPage() {
     };
 
     // Helper function to transcribe audio
-    const transcribeRecording = async (audioBlob: Blob): Promise<{ transcript: string; duration?: number }> => {
+    const transcribeRecording = async (audioBlob: Blob, recordingId: string): Promise<{ transcript: string; duration?: number }> => {
         try {
             setIsTranscribing(true);
 
-            // Validate file size (Whisper limit: 25MB)
-            const fileSizeMB = audioBlob.size / (1024 * 1024);
-
-            if (fileSizeMB > 25) {
-                console.error(`❌ Audio file too large: ${fileSizeMB.toFixed(2)}MB (Whisper limit: 25MB)`);
-                throw new Error(`Audio file too large (${fileSizeMB.toFixed(2)}MB). Maximum: 25MB. Please record shorter answers.`);
-            }
+            const formData = transcriptionForm(audioBlob, recordingId);
 
             // Wrap API call with retry logic
             const result = await withRetry(
                 async () => {
-                    // Create FormData with the audio-only file
-                    const formData = new FormData();
-                    const audioFile = new File([audioBlob], 'audio.webm', { type: 'audio/webm' });
-                    formData.append('audio', audioFile);
-
-                    // Optional: Add context as prompt for better accuracy
-                    if (currentQuestion) {
-                        formData.append('prompt', currentQuestion.text);
-                    }
-
                     // Call transcribe API
                     const response = await apiFetch('/api/transcribe', {
                         method: 'POST',
@@ -274,7 +278,7 @@ export default function InterviewPage() {
 
                     if (!response.ok) {
                         const errorData = await response.json();
-                        throw new Error(errorData.error || 'Transcription failed');
+                        throw Object.assign(new Error(errorData.error || 'Transcription failed'), { retryable: response.status >= 500 || errorData.code === 'work_in_progress' });
                     }
 
                     return await response.json();
@@ -304,7 +308,7 @@ export default function InterviewPage() {
                 : 'Failed to transcribe audio. Please try again.';
 
             toast.error('Transcription Failed', {
-                description: `All retry attempts exhausted. ${errorMessage}`,
+                description: errorMessage,
                 duration: 7000,
             });
 
@@ -342,6 +346,7 @@ export default function InterviewPage() {
                     ...(session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {}),
                 },
                 body: JSON.stringify({
+                    recordingId,
                     sessionType: sessionType,
                     questionText: questionText,
                     transcript: transcript,
@@ -410,221 +415,249 @@ export default function InterviewPage() {
     };
 
     const handleToggleRecording = async () => {
-        if (isRecording) {
-            // Stop Recording
-            setIsRecording(false);
-            setCountdown(null); // Clear countdown if any
-            // @ts-expect-error -- window.stopRecording injected by VideoFeed component
-            if (!window.stopRecording) return;
-
-            // @ts-expect-error -- window.stopRecording injected by VideoFeed component
-            const { blob, audioBlob, eyeTracking } = await window.stopRecording();
-
-            // Bail early if we didn't actually capture anything (catches
-            // fringe cases where MediaRecorder produced zero chunks — the
-            // save path below will reject <100KB anyway).
-            if (!blob || blob.size === 0) {
-                console.warn('Empty video blob — skipping save');
-                if (currentQuestionIndex < questions.length - 1) {
-                    setCurrentQuestionIndex(prev => prev + 1);
-                }
-                return;
-            }
-
-            // Kick off transcription in parallel — audio blob is already
-            // smaller than the video blob (~2MB/min vs ~12MB/min).
-            const transcriptionPromise = transcribeRecording(audioBlob);
-
-            // Optional Electron-only side effect: persist a local copy of
-            // the video file for offline playback. This is additive — the
-            // authoritative copy always goes to Supabase via addRecording.
-            let localVideoPath = '';
-            // @ts-expect-error -- window.electron injected by Electron preload script
-            if (typeof window !== 'undefined' && window.electron?.saveVideo) {
-                try {
-                    const buffer = await blob.arrayBuffer();
-                    // @ts-expect-error -- window.electron injected by Electron preload script
-                    const result = await window.electron.saveVideo(buffer);
-                    if (result?.success && result.filePath) {
-                        localVideoPath = result.filePath;
-                    }
-                } catch (err) {
-                    console.warn('Electron local save failed (non-fatal):', err);
-                }
-            }
-
-            // Read emotion snapshot from the in-browser FaceTrackerService.
-            // Works identically on web and Electron — no external service.
-            let emotionData: Awaited<ReturnType<typeof analyzeVideoPath>> = null;
+        if (savingRecordingRef.current) return;
+        if (!isRecording && !sessionId) {
+            toast.error('Your saved session is not ready. Wait a moment or return to setup and try again.');
+            return;
+        }
+        if (isRecording || pendingCaptureRef.current) {
+            savingRecordingRef.current = true;
+            setIsSavingRecording(true);
+            setSaveFailed(false);
+            setSaveError(null);
             try {
-                emotionData = await analyzeVideoPath(localVideoPath);
-            } catch (error) {
-                console.error('Emotion read failed:', error);
-            }
+                // Stop Recording
+                recordingInProgressRef.current = false;
+                setIsRecording(false);
+                setCountdown(null); // Clear countdown if any
+                // @ts-expect-error -- window.stopRecording injected by VideoFeed component
+                if (!window.stopRecording) return;
 
-            // Combine eye-contact + emotion into a single presence score
-            let presenceScore: number | undefined;
-            if (eyeTracking && emotionData) {
-                presenceScore = calculatePresenceScore(
-                    eyeTracking.eyeContactPercentage,
-                    emotionData.dominantEmotion,
-                    emotionData.confidence
-                );
-            }
+                // @ts-expect-error -- window.stopRecording injected by VideoFeed component
+                const capture = pendingCaptureRef.current ?? { ...await window.stopRecording(), timestamp: Date.now(), saveCheckpoint: { captureId: crypto.randomUUID() } };
+                pendingCaptureRef.current = capture;
+                const { blob, audioBlob, eyeTracking } = capture;
 
-            // Persist to Supabase via InterviewContext.addRecording — this
-            // uploads the video blob to Storage AND inserts the recordings
-            // row. Transcript + speech metrics are filled in below once
-            // the /api/transcribe call resolves.
-            let savedRecordingId: string | undefined;
-            if (currentQuestion) {
-                const recording = await addRecording({
-                    questionId: currentQuestion.id,
-                    questionText: currentQuestion.text,
-                    videoPath: localVideoPath,
-                    timestamp: Date.now(),
-                    transcript: undefined,
-                    duration: undefined,
-                    videoBlob: blob,
-                    wordsPerMinute: undefined,
-                    fillerWordCount: undefined,
-                    clarityScore: undefined,
-                    pacingScore: undefined,
-                    eyeContactPercentage: eyeTracking?.eyeContactPercentage,
-                    gazeStability: eyeTracking?.gazeStability,
-                    dominantEmotion: emotionData?.dominantEmotion,
-                    emotionConfidence: emotionData?.confidence,
-                    presenceScore,
-                });
+                // Bail early if we didn't actually capture anything (catches
+                // fringe cases where MediaRecorder produced zero chunks — the
+                // save path below will reject <100KB anyway).
+                if (!blob || blob.size === 0) {
+                    pendingCaptureRef.current = null;
+                    console.warn('Empty video blob — skipping save');
+                    if (currentQuestionIndex < questions.length - 1) {
+                        setCurrentQuestionIndex(prev => prev + 1);
+                    }
+                    return;
+                }
 
-                savedRecordingId = recording?.recordingId;
+                // Optional Electron-only side effect: persist a local copy of
+                // the video file for offline playback. This is additive — the
+                // authoritative copy always goes to Supabase via addRecording.
+                let localVideoPath = '';
+                // @ts-expect-error -- window.electron injected by Electron preload script
+                if (typeof window !== 'undefined' && window.electron?.saveVideo) {
+                    try {
+                        const buffer = await blob.arrayBuffer();
+                        // @ts-expect-error -- window.electron injected by Electron preload script
+                        const result = await window.electron.saveVideo(buffer);
+                        if (result?.success && result.filePath) {
+                            localVideoPath = result.filePath;
+                        }
+                    } catch (err) {
+                        console.warn('Electron local save failed (non-fatal):', err);
+                    }
+                }
 
-                // Background transcription → DB update → AI feedback pipeline.
-                // Only runs if we have a DB row to update.
-                if (savedRecordingId) {
-                    // Capture in a const so TS narrows inside the async callback
-                    const recordingIdForPipeline: string = savedRecordingId;
-                    pendingTranscriptionsRef.current += 1;
-                    const dbUpdatePromise: Promise<void> = transcriptionPromise.then(async ({ transcript, duration }) => {
-                        if (!transcript || !duration) return;
+                // Read emotion snapshot from the in-browser FaceTrackerService.
+                // Works identically on web and Electron — no external service.
+                let emotionData: Awaited<ReturnType<typeof analyzeVideoPath>> = null;
+                try {
+                    emotionData = await analyzeVideoPath(localVideoPath);
+                } catch (error) {
+                    console.error('Emotion read failed:', error);
+                }
 
-                        const speechMetrics = analyzeSpeech(transcript, duration);
-                        try {
-                            const { supabase: sb } = await import('@/services/supabase');
-                            const updateData = {
-                                transcript: transcript || null,
-                                duration: Math.round(duration),
-                                words_per_minute: speechMetrics.wordsPerMinute !== undefined ? Math.max(0, Math.min(400, Math.round(speechMetrics.wordsPerMinute))) : null,
-                                filler_word_count: speechMetrics.fillerWordCount !== undefined ? Math.max(0, Math.round(speechMetrics.fillerWordCount)) : null,
-                                clarity_score: speechMetrics.clarityScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.clarityScore))) : null,
-                                pacing_score: speechMetrics.pacingScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.pacingScore))) : null,
-                            };
+                // Combine eye-contact + emotion into a single presence score
+                let presenceScore: number | undefined;
+                if (eyeTracking && emotionData) {
+                    presenceScore = calculatePresenceScore(
+                        eyeTracking.eyeContactPercentage,
+                        emotionData.dominantEmotion,
+                        emotionData.confidence
+                    );
+                }
 
-                            const { error } = await sb
-                                .from('recordings')
-                                .update(updateData)
-                                .eq('id', recordingIdForPipeline)
-                                .select();
+                // Persist to Supabase via InterviewContext.addRecording — this
+                // uploads the video blob to Storage AND inserts the recordings
+                // row. Transcript + speech metrics are filled in below once
+                // the /api/transcribe call resolves.
+                let savedRecordingId: string | undefined;
+                if (currentQuestion) {
+                    const recording = await addRecording({
+                        questionId: currentQuestion.id,
+                        questionText: currentQuestion.text,
+                        videoPath: localVideoPath,
+                        timestamp: capture.timestamp,
+                        saveCheckpoint: capture.saveCheckpoint,
+                        transcript: undefined,
+                        duration: undefined,
+                        videoBlob: blob,
+                        audioBlob,
+                        wordsPerMinute: undefined,
+                        fillerWordCount: undefined,
+                        clarityScore: undefined,
+                        pacingScore: undefined,
+                        eyeContactPercentage: eyeTracking?.eyeContactPercentage,
+                        gazeStability: eyeTracking?.gazeStability,
+                        dominantEmotion: emotionData?.dominantEmotion,
+                        emotionConfidence: emotionData?.confidence,
+                        presenceScore,
+                    });
 
-                            if (error) throw error;
+                    savedRecordingId = recording?.recordingId;
+                    if (!savedRecordingId) {
+                        throw new Error(recording?.error || 'Could not save this answer. Keep this tab open and download the original before leaving.');
+                    }
+                    pendingCaptureRef.current = null;
 
-                            setIsTranscribing(false);
+                    // Background transcription → DB update → AI feedback pipeline.
+                    // Only runs if we have a DB row to update.
+                    if (savedRecordingId) {
+                        // Capture in a const so TS narrows inside the async callback
+                        const recordingIdForPipeline: string = savedRecordingId;
+                        const transcriptionPromise = transcribeRecording(audioBlob, recordingIdForPipeline);
+                        pendingTranscriptionsRef.current += 1;
+                        const dbUpdatePromise: Promise<void> = transcriptionPromise.then(async ({ transcript, duration }) => {
+                            if (!transcript || !duration) return;
 
-                            updateRecording(recordingIdForPipeline, {
-                                transcript,
-                                duration,
-                                ...speechMetrics,
-                            });
+                            const speechMetrics = analyzeSpeech(transcript, duration);
+                            try {
+                                const { supabase: sb } = await import('@/services/supabase');
+                                const updateData = {
+                                    transcript: transcript || null,
+                                    duration: Math.round(duration),
+                                    words_per_minute: speechMetrics.wordsPerMinute !== undefined ? Math.max(0, Math.min(400, Math.round(speechMetrics.wordsPerMinute))) : null,
+                                    filler_word_count: speechMetrics.fillerWordCount !== undefined ? Math.max(0, Math.round(speechMetrics.fillerWordCount)) : null,
+                                    clarity_score: speechMetrics.clarityScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.clarityScore))) : null,
+                                    pacing_score: speechMetrics.pacingScore !== undefined ? Math.max(0, Math.min(100, Math.round(speechMetrics.pacingScore))) : null,
+                                };
 
-                            generateAIFeedback(
-                                recordingIdForPipeline,
-                                currentQuestion.text,
-                                transcript,
-                                duration,
-                                speechMetrics,
-                                {
-                                    eyeContactPercentage: eyeTracking?.eyeContactPercentage,
-                                    gazeStability: eyeTracking?.gazeStability,
-                                    dominantEmotion: emotionData?.dominantEmotion,
-                                    emotionConfidence: emotionData?.confidence,
-                                    presenceScore,
-                                }
-                            );
-                        } catch (error) {
-                            console.error('Error updating recording:', error);
+                                const { error } = await sb
+                                    .from('recordings')
+                                    .update(updateData)
+                                    .eq('id', recordingIdForPipeline)
+                                    .select();
+
+                                if (error) throw error;
+
+                                setIsTranscribing(false);
+
+                                updateRecording(recordingIdForPipeline, {
+                                    transcript,
+                                    duration,
+                                    ...speechMetrics,
+                                });
+
+                                generateAIFeedback(
+                                    recordingIdForPipeline,
+                                    currentQuestion.text,
+                                    transcript,
+                                    duration,
+                                    speechMetrics,
+                                    {
+                                        eyeContactPercentage: eyeTracking?.eyeContactPercentage,
+                                        gazeStability: eyeTracking?.gazeStability,
+                                        dominantEmotion: emotionData?.dominantEmotion,
+                                        emotionConfidence: emotionData?.confidence,
+                                        presenceScore,
+                                    }
+                                );
+                            } catch (error) {
+                                console.error('Error updating recording:', error);
+                                Sentry.captureException(error, {
+                                    tags: { area: 'interview', subsystem: 'transcript-db-update' },
+                                    extra: { recordingId: recordingIdForPipeline, sessionId },
+                                });
+                                setIsTranscribing(false);
+                                toast.error('Failed to save transcript', {
+                                    description: 'Your recording was saved but the transcript could not be stored. Try again from the analysis page.',
+                                    duration: 7000,
+                                });
+                            }
+                        }).catch((error) => {
+                            console.error('Background transcription failed:', error);
                             Sentry.captureException(error, {
-                                tags: { area: 'interview', subsystem: 'transcript-db-update' },
-                                extra: { recordingId: recordingIdForPipeline, sessionId },
+                                tags: { area: 'interview', subsystem: 'transcription' },
+                                extra: { recordingId: savedRecordingId, sessionId },
                             });
                             setIsTranscribing(false);
-                            toast.error('Failed to save transcript', {
-                                description: 'Your recording was saved but the transcript could not be stored. Try again from the analysis page.',
+                            toast.error('Processing Failed', {
+                                description: 'Your answer could not be processed. Data has been saved for retry.',
                                 duration: 7000,
                             });
-                        }
-                    }).catch((error) => {
-                        console.error('Background transcription failed:', error);
-                        Sentry.captureException(error, {
-                            tags: { area: 'interview', subsystem: 'transcription' },
-                            extra: { recordingId: savedRecordingId, sessionId },
+                        }).finally(() => {
+                            // Always clear the transcribing indicator, regardless of
+                            // outcome. The .then() above can early-return on an empty
+                            // transcript WITHOUT throwing (so .catch never fires),
+                            // which previously left the "Transcribing…" badge stuck
+                            // for the rest of the session. finally is the only path
+                            // hit by every outcome (success, empty, error, throw).
+                            setIsTranscribing(false);
+                            // Decrement the in-flight counter regardless of outcome.
+                            // Both the unload guard and the final-question drain rely
+                            // on this hitting zero when the pipeline is fully done.
+                            pendingTranscriptionsRef.current = Math.max(0, pendingTranscriptionsRef.current - 1);
                         });
-                        setIsTranscribing(false);
-                        toast.error('Processing Failed', {
-                            description: 'Your answer could not be processed. Data has been saved for retry.',
-                            duration: 7000,
-                        });
-                    }).finally(() => {
-                        // Always clear the transcribing indicator, regardless of
-                        // outcome. The .then() above can early-return on an empty
-                        // transcript WITHOUT throwing (so .catch never fires),
-                        // which previously left the "Transcribing…" badge stuck
-                        // for the rest of the session. finally is the only path
-                        // hit by every outcome (success, empty, error, throw).
-                        setIsTranscribing(false);
-                        // Decrement the in-flight counter regardless of outcome.
-                        // Both the unload guard and the final-question drain rely
-                        // on this hitting zero when the pipeline is fully done.
-                        pendingTranscriptionsRef.current = Math.max(0, pendingTranscriptionsRef.current - 1);
-                    });
-                    pendingDbUpdatesRef.current.push(dbUpdatePromise);
-                }
-            }
-
-            // Auto-advance or finish the session
-            if (currentQuestionIndex < questions.length - 1) {
-                setCurrentQuestionIndex(prev => prev + 1);
-            } else {
-                // Final question: drain any in-flight transcription → DB
-                // update pipelines before navigating, so /analysis sees
-                // fully-hydrated rows. Bounded by a 30s timeout so we
-                // never trap the user on this page if Whisper is slow.
-                const pending = [...pendingDbUpdatesRef.current];
-                if (pending.length > 0 && pendingTranscriptionsRef.current > 0) {
-                    toast.info('Saving your answers…', {
-                        description: 'Finishing up the last few transcripts before showing your analysis.',
-                        duration: 4000,
-                    });
-                    await Promise.race([
-                        Promise.allSettled(pending),
-                        new Promise<void>((resolve) => setTimeout(resolve, 30000)),
-                    ]);
-                }
-
-                if (sessionId) {
-                    try {
-                        await completeSession(sessionId);
-                    } catch (error) {
-                        console.error('Failed to complete session:', error);
-                        Sentry.captureException(error, {
-                            tags: { area: 'interview', subsystem: 'complete-session' },
-                            extra: { sessionId },
-                        });
+                        pendingDbUpdatesRef.current.push(dbUpdatePromise);
                     }
                 }
-                // Pass sessionId so /analysis can hydrate from the DB
-                // instead of relying on volatile React context.
-                const target = sessionId ? `/analysis?sessionId=${sessionId}` : '/analysis';
-                router.push(target);
+
+                // Auto-advance or finish the session
+                if (currentQuestionIndex < questions.length - 1) {
+                    setCurrentQuestionIndex(prev => prev + 1);
+                } else {
+                    // Final question: drain any in-flight transcription → DB
+                    // update pipelines before navigating, so /analysis sees
+                    // fully-hydrated rows. Bounded by a 30s timeout so we
+                    // never trap the user on this page if Whisper is slow.
+                    const pending = [...pendingDbUpdatesRef.current];
+                    if (pending.length > 0 && pendingTranscriptionsRef.current > 0) {
+                        toast.info('Saving your answers…', {
+                            description: 'Finishing up the last few transcripts before showing your analysis.',
+                            duration: 4000,
+                        });
+                        await Promise.race([
+                            Promise.allSettled(pending),
+                            new Promise<void>((resolve) => setTimeout(resolve, 30000)),
+                        ]);
+                    }
+
+                    if (sessionId) {
+                        try {
+                            await completeSession(sessionId);
+                        } catch (error) {
+                            console.error('Failed to complete session:', error);
+                            Sentry.captureException(error, {
+                                tags: { area: 'interview', subsystem: 'complete-session' },
+                                extra: { sessionId },
+                            });
+                            toast.error('Could not finish this session. Please try again.');
+                            return;
+                        }
+                    }
+                    // Pass sessionId so /analysis can hydrate from the DB
+                    // instead of relying on volatile React context.
+                    const target = sessionId ? `/analysis?sessionId=${sessionId}` : '/analysis';
+                    router.push(target);
+                }
+            } catch (error) {
+                setSaveFailed(Boolean(pendingCaptureRef.current));
+                const message = error instanceof Error ? error.message : 'Could not save this answer. Keep this tab open and retry.';
+                setSaveError(message);
+                toast.error(message);
+            } finally {
+                savingRecordingRef.current = false;
+                setIsSavingRecording(false);
             }
         } else {
             // Start Countdown (3, 2, 1)
@@ -637,6 +670,7 @@ export default function InterviewPage() {
                         clearInterval(countdownInterval);
 
                         // Start actual recording after countdown
+                        recordingInProgressRef.current = true;
                         setIsRecording(true);
                         setCountdown(null);
 
@@ -655,6 +689,7 @@ export default function InterviewPage() {
     };
 
     const handlePreviousQuestion = () => {
+        if (savingRecordingRef.current || pendingCaptureRef.current || isRecording) return;
         // Go back to previous question if not on first question
         if (currentQuestionIndex > 0) {
             setCurrentQuestionIndex(prev => prev - 1);
@@ -662,6 +697,7 @@ export default function InterviewPage() {
     };
 
     const handleNextQuestion = async () => {
+        if (savingRecordingRef.current || pendingCaptureRef.current || isRecording) return;
         // No longer need to wait for transcription - it runs in background
         // User can move to next question immediately after recording stops
 
@@ -693,7 +729,8 @@ export default function InterviewPage() {
                         tags: { area: 'interview', subsystem: 'complete-session', path: 'skip-to-end' },
                         extra: { sessionId },
                     });
-                    // Don't block navigation on error
+                    toast.error('Could not finish this session. Please try again.');
+                    return;
                 }
             }
             const target = sessionId ? `/analysis?sessionId=${sessionId}` : '/analysis';
@@ -702,6 +739,10 @@ export default function InterviewPage() {
     };
 
     const handleBack = () => {
+        if (recordingInProgressRef.current || savingRecordingRef.current || pendingCaptureRef.current) {
+            toast.info('Keep this tab open until your recording is saved.');
+            return;
+        }
         // In skip mode the user intentionally chose not to record — go home silently.
         // Otherwise show the "no recordings" confirmation if they haven't recorded yet.
         if (recordings.length === 0 && cameraStatus !== 'skipped') {
@@ -712,11 +753,50 @@ export default function InterviewPage() {
         }
     };
 
+    const downloadCapturedOriginal = () => {
+        const capture = pendingCaptureRef.current;
+        if (!capture || savingRecordingRef.current) return;
+        const extensions: Record<string, string> = { 'video/webm': 'webm', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/x-matroska': 'mkv' };
+        const extension = extensions[capture.blob.type.split(';')[0].trim().toLowerCase()] || 'bin';
+        const url = URL.createObjectURL(capture.blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `pitcht-answer-${capture.saveCheckpoint.captureId}.${extension}`;
+        document.body.appendChild(link);
+        try { link.click(); } finally {
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1_000);
+        }
+    };
+
+    const discardCapturedAnswer = () => {
+        const capture = pendingCaptureRef.current;
+        if (!capture || savingRecordingRef.current) return;
+        if (!window.confirm('Discard this unsaved captured answer and record it again? Download the original first if you want to keep it. Any already saved cloud data will be kept.')) return;
+        discardUnsavedRecording(capture.saveCheckpoint.captureId);
+        pendingCaptureRef.current = null;
+        setSaveFailed(false);
+        setSaveError(null);
+        setIsRecording(false);
+        setRecordingDuration(0);
+        // Stay on this question; no cloud mutation or automatic advance.
+    };
+
     if (!mounted || !sessionType || !currentQuestion) return null;
 
     return (
         <main className="relative w-full h-full min-h-screen overflow-hidden">
             <VideoFeed />
+            {(isSavingRecording || saveFailed) && (
+                <div role="status" className="absolute inset-x-6 top-24 z-50 rounded-xl bg-black/90 border border-white/20 p-4 text-white">
+                    <p>{isSavingRecording ? 'Saving your recording. Keep this tab open…' : saveError || 'This answer has not finished saving. Keep this tab open; refreshing would lose the unsaved media.'}</p>
+                    {saveFailed && <div className="mt-3 flex flex-wrap gap-3">
+                        <button className="rounded-full bg-white text-black px-4 py-2" onClick={handleToggleRecording}>Retry saving</button>
+                        <button className="rounded-full border border-white/40 px-4 py-2" onClick={downloadCapturedOriginal}>Download original</button>
+                        <button className="rounded-full border border-white/40 px-4 py-2" onClick={discardCapturedAnswer}>Discard and record again</button>
+                    </div>}
+                </div>
+            )}
 
             {/* Countdown Overlay */}
             {countdown !== null && (
@@ -867,7 +947,7 @@ export default function InterviewPage() {
                 currentQuestionIndex={currentQuestionIndex}
                 recordingDuration={recordingDuration}
                 isTranscribing={false} // Always false now - transcription runs in background
-                recordingDisabled={cameraStatus === 'skipped'}
+                recordingDisabled={cameraStatus === 'skipped' || isSavingRecording || saveFailed}
             />
 
             <ContextModal

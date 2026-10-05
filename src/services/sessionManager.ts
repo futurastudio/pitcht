@@ -3,9 +3,11 @@
  * Handles all database operations for sessions, questions, recordings, and analyses
  */
 
-import { supabase, uploadVideo, getVideoUrl as getVideoUrlFromStorage } from './supabase';
+import { supabase, uploadVideo, recordingVideoPath, getVideoUrl as getVideoUrlFromStorage } from './supabase';
 import type { SessionType, Question } from '@/types/interview';
 import type { Diagnosis } from '@/utils/diagnosisTaxonomy';
+import { apiFetch } from '@/utils/api';
+import { STORAGE_RESTRICTED_MESSAGE } from '@/utils/recordingContract';
 
 // Re-export getVideoUrl for convenience
 export { getVideoUrl } from './supabase';
@@ -69,52 +71,13 @@ export async function createSession(
   context: string,
   questions: Question[]
 ): Promise<string> {
-  console.log(`📝 Creating session: ${sessionType}`);
-
-  // Insert session
-  const { data: session, error: sessionError } = await supabase
-    .from('sessions')
-    .insert({
-      user_id: userId,
-      session_type: sessionType,
-      context: context,
-      status: 'in_progress',
-    })
-    .select('id')
-    .single();
-
-  if (sessionError) {
-    console.error('Session creation error:', sessionError);
-    throw new Error(`Failed to create session: ${sessionError.message}`);
-  }
-
-  const sessionId = session.id;
-  console.log(`✅ Session created: ${sessionId}`);
-
-  // Insert questions
-  if (questions.length > 0) {
-    const questionsData = questions.map((q, index) => ({
-      id: q.id, // CRITICAL: Use the UUID from client-side question (generated in claude.ts)
-      session_id: sessionId,
-      question_text: q.text,
-      question_type: q.type,
-      difficulty: q.difficulty || 3,
-      position: index,
-    }));
-
-    const { error: questionsError } = await supabase
-      .from('questions')
-      .insert(questionsData);
-
-    if (questionsError) {
-      console.error('Questions insert error:', questionsError);
-      throw new Error(`Failed to save questions: ${questionsError.message}`);
-    }
-
-    console.log(`✅ ${questions.length} questions saved with IDs:`, questionsData.map(q => q.id));
-  }
-
-  return sessionId;
+  const response = await apiFetch('/api/create-practice-session', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, sessionType, context, questions }),
+  });
+  const result = await response.json();
+  if (!response.ok || typeof result.sessionId !== 'string') throw new Error(result.error || 'Session could not be saved.');
+  return result.sessionId;
 }
 
 /**
@@ -128,6 +91,11 @@ export async function createSession(
  * @param metrics - All metrics (speech + video)
  * @returns Object with recording ID and video URL (for analysis page playback)
  */
+export interface RecordingSaveCheckpoint {
+  captureId: string;
+  uploadedPath?: string;
+}
+
 export async function saveRecording(
   userId: string,
   sessionId: string,
@@ -135,46 +103,67 @@ export async function saveRecording(
   videoBlob: Blob,
   transcript: string,
   duration: number,
-  metrics: RecordingMetrics
+  metrics: RecordingMetrics,
+  checkpoint: RecordingSaveCheckpoint,
 ): Promise<{ id: string; videoUrl: string }> {
-  console.log(`💾 Saving recording for question: ${questionId}`);
-
-  // Upload video to storage
-  const videoPath = await uploadVideo(userId, sessionId, videoBlob);
+  const videoPath = recordingVideoPath(userId, sessionId, videoBlob.type, checkpoint.captureId);
+  if (checkpoint.uploadedPath && checkpoint.uploadedPath !== videoPath) throw new Error('Recording upload checkpoint does not match this answer.');
+  const { data: session, error: sessionError, status: sessionStatus } = await supabase.from('sessions').select('user_id').eq('id', sessionId).single();
+  if (sessionStatus === 402) throw new Error(STORAGE_RESTRICTED_MESSAGE);
+  if (sessionError || session?.user_id !== userId) throw new Error('Could not confirm ownership of this saved session. Keep this tab open and sign in again.');
+  const confirmRow = (row: { id: string; session_id: string; question_id: string; video_url: string }) => {
+    if (row.id !== checkpoint.captureId || row.session_id !== sessionId || row.question_id !== questionId || row.video_url !== videoPath) {
+      throw new Error('This capture ID already refers to a different answer. Download your original before recording again.');
+    }
+    return { id: row.id, videoUrl: row.video_url };
+  };
+  const reconcile = async () => {
+    const { data, error, status } = await supabase.from('recordings').select('id,session_id,question_id,video_url').eq('id', checkpoint.captureId).maybeSingle();
+    if (status === 402) throw new Error(STORAGE_RESTRICTED_MESSAGE);
+    if (error) throw new Error('Could not confirm whether this answer was saved. Keep this tab open and retry.');
+    return data ? confirmRow(data) : null;
+  };
+  // Reconcile first: an earlier insert can have committed despite losing its response.
+  const existing = await reconcile();
+  if (existing) return existing;
+  if (!checkpoint.uploadedPath) {
+    checkpoint.uploadedPath = await uploadVideo(userId, sessionId, videoBlob, checkpoint.captureId);
+  }
 
   // Insert recording with all metrics
   // Round all numeric values to integers (database expects INTEGER not FLOAT)
-  const { data: recording, error } = await supabase
-    .from('recordings')
-    .insert({
-      session_id: sessionId,
-      question_id: questionId,
-      video_url: videoPath,
-      transcript: transcript,
-      duration: Math.round(duration),
-      // Speech metrics (round to integers)
-      words_per_minute: metrics.wordsPerMinute ? Math.round(metrics.wordsPerMinute) : null,
-      filler_word_count: metrics.fillerWordCount ? Math.round(metrics.fillerWordCount) : null,
-      clarity_score: metrics.clarityScore ? Math.round(metrics.clarityScore) : null,
-      pacing_score: metrics.pacingScore ? Math.round(metrics.pacingScore) : null,
-      // Video metrics (round to integers)
-      eye_contact_percentage: metrics.eyeContactPercentage ? Math.round(metrics.eyeContactPercentage) : null,
-      gaze_stability: metrics.gazeStability ? Math.round(metrics.gazeStability) : null,
-      dominant_emotion: metrics.dominantEmotion,
-      emotion_confidence: metrics.emotionConfidence ? Math.round(metrics.emotionConfidence) : null,
-      presence_score: metrics.presenceScore ? Math.round(metrics.presenceScore) : null,
-    })
-    .select('id')
-    .single();
+  try {
+    const { data: recording, error } = await supabase
+      .from('recordings')
+      .insert({
+        id: checkpoint.captureId,
+        session_id: sessionId,
+        question_id: questionId,
+        video_url: videoPath,
+        transcript: transcript,
+        duration: Math.round(duration),
+        // Speech metrics (round to integers)
+        words_per_minute: metrics.wordsPerMinute ? Math.round(metrics.wordsPerMinute) : null,
+        filler_word_count: metrics.fillerWordCount ? Math.round(metrics.fillerWordCount) : null,
+        clarity_score: metrics.clarityScore ? Math.round(metrics.clarityScore) : null,
+        pacing_score: metrics.pacingScore ? Math.round(metrics.pacingScore) : null,
+        // Video metrics (round to integers)
+        eye_contact_percentage: metrics.eyeContactPercentage ? Math.round(metrics.eyeContactPercentage) : null,
+        gaze_stability: metrics.gazeStability ? Math.round(metrics.gazeStability) : null,
+        dominant_emotion: metrics.dominantEmotion,
+        emotion_confidence: metrics.emotionConfidence ? Math.round(metrics.emotionConfidence) : null,
+        presence_score: metrics.presenceScore ? Math.round(metrics.presenceScore) : null,
+      })
+      .select('id,session_id,question_id,video_url')
+      .single();
 
-  if (error) {
-    console.error('Recording save error:', error);
-    throw new Error(`Failed to save recording: ${error.message}`);
+    if (error || !recording) throw new Error('Recording save was not acknowledged.');
+    return confirmRow(recording);
+  } catch {
+    const confirmed = await reconcile();
+    if (confirmed) return confirmed;
+    throw new Error('Your video uploaded, but the answer has not finished saving. Keep this tab open and retry saving.');
   }
-
-  console.log(`✅ Recording saved: ${recording.id}, video URL: ${videoPath}`);
-  // Return both ID and video URL - videoUrl is CRITICAL for analysis page playback
-  return { id: recording.id, videoUrl: videoPath };
 }
 
 /**
@@ -237,22 +226,11 @@ export async function saveAnalysis(
  * @param sessionId - Session ID
  */
 export async function completeSession(sessionId: string): Promise<void> {
-  console.log(`✅ Completing session: ${sessionId}`);
-
-  const { error } = await supabase
-    .from('sessions')
-    .update({
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', sessionId);
-
-  if (error) {
-    console.error('Session completion error:', error);
-    throw new Error(`Failed to complete session: ${error.message}`);
-  }
-
-  console.log(`✅ Session marked as completed`);
+  const response = await apiFetch('/api/complete-session', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId }),
+  });
+  const result = await response.json();
+  if (!response.ok || !result.success) throw new Error(result.error || 'Session could not be completed.');
 }
 
 /**

@@ -1,0 +1,36 @@
+TAP version 13
+# Fixture browser: Error fetching session: Error: Session ownership mismatch
+#     at fetchSession (<anonymous>:14031:47)
+# Subtest: History recovery reaches the exact saved answer; account switches reset private React/browser/analytics state and fence late entitlement responses
+ok 1 - History recovery reaches the exact saved answer; account switches reset private React/browser/analytics state and fence late entitlement responses
+  ---
+  duration_ms: 1754.435542
+  type: 'test'
+  ...
+# Subtest: recovery keeps only verified owner metadata and never restores serialized media
+ok 2 - recovery keeps only verified owner metadata and never restores serialized media
+  ---
+  duration_ms: 0.671375
+  type: 'test'
+  ...
+# Subtest: unowned legacy transcripts are discarded, current-owner refresh survives, logout removes private metadata
+ok 3 - unowned legacy transcripts are discarded, current-owner refresh survives, logout removes private metadata
+  ---
+  duration_ms: 0.157917
+  type: 'test'
+  ...
+# Subtest: account isolation preserves public rendering during initial auth resolution
+ok 4 - account isolation preserves public rendering during initial auth resolution
+  ---
+  duration_ms: 87.91675
+  type: 'test'
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2464.948166

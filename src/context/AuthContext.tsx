@@ -1,15 +1,18 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import { supabase } from '@/services/supabase';
-import { convertAnonymousToRealAccount } from '@/services/auth';
-import { TRIAL_SESSION_LIMIT } from '@/services/subscriptionManager';
-import { identifyUser, trackEvent, AnalyticsEvents } from '@/utils/analytics';
+import { notifyNewSignup } from '@/services/signupNotification';
+import { canUserStartSession } from '@/services/subscriptionManager';
+import { identifyUser, resetUser, trackEvent, AnalyticsEvents } from '@/utils/analytics';
+import { toast } from 'sonner';
+import { clearOtherRecovery, ACCOUNT_CHANGE_EVENT, UNSAVED_ACCOUNT_MESSAGE } from '@/utils/accountRecovery';
 import type { User } from '@supabase/supabase-js';
 
 interface SubscriptionStatus {
   isPremium: boolean;
   isTrialing: boolean;
+  entitlementSource?: 'stripe' | 'internal_test' | 'free';
   trialEndsAt: Date | null;
   sessionsThisMonth: number;
   canStartSession: boolean;
@@ -45,158 +48,93 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     canStartSession: true,
   });
 
-  // Initialize auth state
+  const ownerRef = useRef<string | null | undefined>(undefined);
+  const identityEpoch = useRef(0);
+
+  const applyUser = (next: User | null) => {
+    const nextOwner = next?.id ?? null;
+    if (ownerRef.current !== nextOwner) {
+      ownerRef.current = nextOwner;
+      identityEpoch.current++;
+      try { clearOtherRecovery(localStorage, nextOwner); } catch { /* Storage may be disabled. */ }
+      resetUser();
+      if (next) identifyUser(next.id, { email: next.email });
+      setSubscriptionStatus({ isPremium: false, isTrialing: false, trialEndsAt: null, sessionsThisMonth: 0, canStartSession: true });
+    }
+    setUser(next);
+    setLoading(false);
+  };
+
+  // A spontaneous sign-out must clear private state immediately. Explicit account
+  // changes first give unsaved capture owners a chance to save/download/discard.
+  const ensureAccountChange = () => {
+    if (!window.dispatchEvent(new Event(ACCOUNT_CHANGE_EVENT, { cancelable: true }))) {
+      toast.error(UNSAVED_ACCOUNT_MESSAGE);
+      throw new Error(UNSAVED_ACCOUNT_MESSAGE);
+    }
+  };
+
   useEffect(() => {
-    // Check active sessions and set initial state
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    // Listen for auth changes.
-    // We explicitly handle each event type to avoid spurious logouts:
-    // - SIGNED_IN / INITIAL_SESSION: user authenticated, set user
-    // - SIGNED_OUT: user explicitly signed out, clear user
-    // - TOKEN_REFRESHED: session renewed silently — update user but NEVER clear it
-    //   (a failed refresh fires SIGNED_OUT separately, not TOKEN_REFRESHED)
-    // - PASSWORD_RECOVERY / USER_UPDATED: update user object
-    // Ignoring unknown events prevents a Supabase internal event from
-    // unexpectedly logging the user out (e.g. on return from Stripe checkout).
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[auth] onAuthStateChange:', event, session?.user?.id ?? 'no user');
-
-      if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setSubscriptionStatus({
-          isPremium: false,
-          isTrialing: false,
-          trialEndsAt: null,
-          sessionsThisMonth: 0,
-          canStartSession: true,
-        });
-        trackEvent(AnalyticsEvents.LOGOUT);
+    let active = true;
+    let observedEvent = false;
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!active) return;
+      observedEvent = true;
+      if (event === 'SIGNED_OUT' || (event === 'INITIAL_SESSION' && !session)) {
+        if (event === 'SIGNED_OUT') trackEvent(AnalyticsEvents.LOGOUT);
+        applyUser(null);
       } else if (session?.user) {
-        // SIGNED_IN, INITIAL_SESSION, TOKEN_REFRESHED, USER_UPDATED, PASSWORD_RECOVERY
-        setUser(session.user);
-        identifyUser(session.user.id, { email: session.user.email });
-        // On explicit sign-in or initial session load, immediately fetch the real
-        // subscription state from DB using the user ID we have right now —
-        // before setUser()'s async state update propagates to refreshSubscriptionStatus().
-        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-          refreshSubscriptionStatus(session.user.id);
-        }
-        if (event === 'SIGNED_IN') {
-          trackEvent(AnalyticsEvents.LOGIN_COMPLETED, { method: 'email' });
-        }
+        applyUser(session.user);
+        if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') void notifyNewSignup(session);
+        if (event === 'SIGNED_IN') trackEvent(AnalyticsEvents.LOGIN_COMPLETED, { method: 'email' });
       }
-      // If TOKEN_REFRESHED but session is somehow null, do NOT clear user.
-      // This prevents a mid-flight token refresh from logging the user out visually.
     });
-
-    return () => subscription.unsubscribe();
+    void supabase.auth.getSession().then(({ data: { session } }) => {
+      if (active && !observedEvent) applyUser(session?.user ?? null);
+    });
+    return () => { active = false; subscription.unsubscribe(); };
   }, []);
 
   // Accept an optional explicit userId so this can be called from onAuthStateChange
   // before the setUser() state update has propagated (React state is async).
-  const refreshSubscriptionStatus = async (forUserId?: string) => {
-    const uid = forUserId ?? user?.id;
+  const refreshSubscriptionStatus = useCallback(async (forUserId?: string) => {
+    const uid = forUserId ?? ownerRef.current;
     if (!uid) return;
+    const epoch = identityEpoch.current;
 
     try {
-      // Check for active OR trialing premium subscription
-      const { data: subscriptions, error } = await supabase
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', uid)
-        .in('status', ['active', 'trialing'])
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      // A transient query failure must NOT fall through to the free-tier
-      // branch below — that would wrongly paywall a paying subscriber on a
-      // flaky connection. Preserve the prior subscriptionStatus instead.
-      if (error) {
-        console.error('Subscription query failed; preserving prior subscription state:', error);
-        return;
-      }
-
-      const subscription = subscriptions?.[0];
-
-      if (subscription) {
-        const isTrialing = subscription.status === 'trialing';
-        const isActive = subscription.status === 'active';
-        setSubscriptionStatus({
-          isPremium: isActive,  // Only true for paying subscribers, not trialing
-          isTrialing,
-          trialEndsAt: isTrialing && subscription.current_period_end
-            ? new Date(subscription.current_period_end)
-            : null,
-          sessionsThisMonth: 0,
-          canStartSession: true,
-        });
-        return;
-      }
-
-      // Check free trial usage: only count completed sessions, so an abandoned
-      // or in-progress session does not consume the trial (no permanent lockout
-      // from a refresh or crash). Trial status comes exclusively from the
-      // subscriptions table (managed by Stripe webhooks).
-      const { count, error: sessionsError } = await supabase
-        .from('sessions')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', uid)
-        .eq('status', 'completed');
-
-      // Same rule: if we can't read the session count, don't guess. Keep prior
-      // state rather than risk locking the user out of a session they're owed.
-      if (sessionsError) {
-        console.error('Session count query failed; preserving prior subscription state:', sessionsError);
-        return;
-      }
-
-      const sessionsTotal = count || 0;
-
+      const access = await canUserStartSession(uid);
+      if (ownerRef.current !== uid || identityEpoch.current !== epoch) return;
       setSubscriptionStatus({
-        isPremium: false,
-        isTrialing: false,
-        trialEndsAt: null,
-        sessionsThisMonth: sessionsTotal,
-        canStartSession: sessionsTotal < TRIAL_SESSION_LIMIT,
+        isPremium: access.isPremium,
+        isTrialing: access.isTrialing,
+        entitlementSource: access.entitlementSource,
+        trialEndsAt: access.trialEndsAt,
+        sessionsThisMonth: access.sessionsThisMonth,
+        canStartSession: access.allowed,
       });
     } catch (error) {
       console.error('Error fetching subscription status:', error);
     }
-  };
+  }, []);
 
-  // Update subscription status when user changes
   useEffect(() => {
-    if (user) {
-      refreshSubscriptionStatus();
-    } else {
-      setSubscriptionStatus({
-        isPremium: false,
-        isTrialing: false,
-        trialEndsAt: null,
-        sessionsThisMonth: 0,
-        canStartSession: true,
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- network fetch commits only after await and identity check
+    if (user) void refreshSubscriptionStatus();
+  }, [user, refreshSubscriptionStatus]);
 
   const signInWithEmail = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    ensureAccountChange();
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) throw error;
-    setUser(data.user);
   };
 
   const signInWithGoogle = async () => {
+    ensureAccountChange();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -207,20 +145,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   };
 
-async function sendSignupNotification(userId: string, email: string, signupMethod: 'email' | 'google') {
-  try {
-    await fetch('/api/notify-signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, email, signupMethod }),
-    });
-  } catch (err) {
-    // Silent fail — don't block signup on notification error
-    console.error('[auth] Signup notification failed:', err);
-  }
-}
-
   const signUp = async (email: string, password: string) => {
+    ensureAccountChange();
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -228,32 +154,17 @@ async function sendSignupNotification(userId: string, email: string, signupMetho
 
     if (error) throw error;
 
-    // If there was an anonymous user, convert their data
-    const anonymousUserId = localStorage.getItem('pitcht_anonymous_user_id');
-    if (anonymousUserId && data.user) {
-      try {
-        await convertAnonymousToRealAccount(anonymousUserId, data.user.id);
-        localStorage.removeItem('pitcht_anonymous_user_id');
-      } catch (err) {
-        console.error('Error converting anonymous account:', err);
-        // Continue anyway - user is signed up
-      }
-    }
-
-    setUser(data.user);
-
-    // Notify on new signup
+    // Track the signup separately from best-effort welcome delivery.
     if (data.user?.id && data.user?.email) {
-      await sendSignupNotification(data.user.id, data.user.email, 'email');
-      identifyUser(data.user.id, { email: data.user.email, signup_method: 'email' });
       trackEvent(AnalyticsEvents.SIGNUP_COMPLETED, { method: 'email' });
     }
   };
 
   const signOut = async () => {
+    ensureAccountChange();
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
-    setUser(null);
+    applyUser(null);
   };
 
   const sendPasswordReset = async (email: string) => {

@@ -10,6 +10,7 @@ import { useInterview } from '@/context/InterviewContext';
 import { getSessionDetails, getVideoUrl } from '@/services/sessionManager';
 import { canUserStartSession } from '@/services/subscriptionManager';
 import TranscriptViewer from '@/components/TranscriptViewer';
+import { safeFeedbackDetails } from '@/utils/feedbackValidation';
 import PaywallModal from '@/components/PaywallModal';
 
 interface Recording {
@@ -52,6 +53,7 @@ interface Question {
 }
 
 interface SessionDetails {
+  user_id: string;
   id: string;
   session_type: string;
   context: string;
@@ -87,12 +89,23 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
 
   // Fetch session details
   useEffect(() => {
+    let cancelled = false;
     const fetchSession = async () => {
       if (!user) return;
 
       setIsLoading(true);
+      setSession(null);
+      setSelectedRecording(null);
       try {
         const data = await getSessionDetails(id);
+        if (cancelled) return;
+        if (data.user_id !== user.id) throw new Error('Session ownership mismatch');
+        data.recordings = data.recordings.map((recording: Recording) => ({ ...recording,
+          analyses: recording.analyses.map(analysis => ({ ...analysis,
+            ...safeFeedbackDetails({ improvements: analysis.improvements }, recording.transcript ?? '', recording.duration),
+            communication_patterns: safeFeedbackDetails({ communicationPatterns: analysis.communication_patterns }, recording.transcript ?? '', recording.duration).communicationPatterns,
+          })),
+        }));
         setSession(data);
 
         // Auto-select first recording
@@ -102,20 +115,23 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
       } catch (error) {
         console.error('Error fetching session:', error);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     fetchSession();
+    return () => { cancelled = true; };
   }, [id, user]);
 
   // Load video when recording selected
   useEffect(() => {
+    let cancelled = false;
+    setVideoSrc(null);
     const loadVideo = async () => {
       if (selectedRecording && selectedRecording.video_url) {
         try {
           const signedUrl = await getVideoUrl(selectedRecording.video_url);
-          setVideoSrc(signedUrl);
+          if (!cancelled) setVideoSrc(signedUrl);
         } catch (error) {
           console.error('Failed to load video:', error);
         }
@@ -123,6 +139,7 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
     };
 
     loadVideo();
+    return () => { cancelled = true; };
   }, [selectedRecording]);
 
   if (loading || isLoading || !user) {
@@ -385,7 +402,13 @@ export default function SessionDetailsPage({ params }: { params: Promise<{ id: s
                       )}
                     </div>
                   ) : (
-                    <p className="text-white/50 text-sm">No AI feedback available for this recording</p>
+                    <div className="space-y-3">
+                      <p className="text-white/50 text-sm">This answer is saved. Its feedback is not ready yet.</p>
+                      <Link href={`/analysis?sessionId=${encodeURIComponent(session.id)}&recordingId=${encodeURIComponent(selectedRecording.id)}`}
+                        className="inline-flex rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black hover:bg-white/90">
+                        Recover this answer
+                      </Link>
+                    </div>
                   )}
                 </div>
 

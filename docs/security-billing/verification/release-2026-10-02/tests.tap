@@ -1,0 +1,580 @@
+TAP version 13
+# Subtest: Cutover source: reviewed RPCs remain identical except explicit legacy admission
+ok 1 - Cutover source: reviewed RPCs remain identical except explicit legacy admission # SKIP
+  ---
+  duration_ms: 1.824042
+  type: 'test'
+  ...
+# Subtest: Cutover: preserves records, canonical billing, owner grant and all completed usage
+ok 2 - Cutover: preserves records, canonical billing, owner grant and all completed usage # SKIP
+  ---
+  duration_ms: 0.495666
+  type: 'test'
+  ...
+# Subtest: Cutover: completed third session can finish but cannot start a fourth or reset usage by deletion
+ok 3 - Cutover: completed third session can finish but cannot start a fourth or reset usage by deletion # SKIP
+  ---
+  duration_ms: 0.069625
+  type: 'test'
+  ...
+# Subtest: Cutover: fixed selection caps active reservations and denies recent excluded/half-created/future work
+ok 4 - Cutover: fixed selection caps active reservations and denies recent excluded/half-created/future work # SKIP
+  ---
+  duration_ms: 0.038875
+  type: 'test'
+  ...
+# Subtest: Cutover: maximum three eligible completions, fixed expiry, immutable marker, one-shot rerun
+ok 5 - Cutover: maximum three eligible completions, fixed expiry, immutable marker, one-shot rerun # SKIP
+  ---
+  duration_ms: 0.242208
+  type: 'test'
+  ...
+# Subtest: Cutover: queued old completion is denied, recording insert resumes, and history deletion retains captured usage
+ok 6 - Cutover: queued old completion is denied, recording insert resumes, and history deletion retains captured usage # SKIP
+  ---
+  duration_ms: 0.137125
+  type: 'test'
+  ...
+# Subtest: Cutover: a completion committed before lock acquisition enters the atomic backfill
+ok 7 - Cutover: a completion committed before lock acquisition enters the atomic backfill # SKIP
+  ---
+  duration_ms: 0.307375
+  type: 'test'
+  ...
+# Subtest: Cutover: lock timeout leaves no schema/permission fragment
+ok 8 - Cutover: lock timeout leaves no schema/permission fragment # SKIP
+  ---
+  duration_ms: 0.115292
+  type: 'test'
+  ...
+# Subtest: Cutover: unexpected entitlement columns and inherited writes abort atomically
+ok 9 - Cutover: unexpected entitlement columns and inherited writes abort atomically # SKIP
+  ---
+  duration_ms: 0.533292
+  type: 'test'
+  ...
+# Subtest: Cutover: a non-bypass owner under FORCE RLS cannot silently backfill filtered history
+ok 10 - Cutover: a non-bypass owner under FORCE RLS cannot silently backfill filtered history # SKIP
+  ---
+  duration_ms: 0.752541
+  type: 'test'
+  ...
+# Subtest: Cutover: freshly verified paid and trial users can process excluded legacy recordings
+ok 11 - Cutover: freshly verified paid and trial users can process excluded legacy recordings # SKIP
+  ---
+  duration_ms: 0.872375
+  type: 'test'
+  ...
+# Subtest: Cutover: final private permissions, canonical Stripe revision/outbox and concurrent admission remain intact
+ok 12 - Cutover: final private permissions, canonical Stripe revision/outbox and concurrent admission remain intact # SKIP
+  ---
+  duration_ms: 0.0595
+  type: 'test'
+  ...
+# Offline media evidence: {"mp4Evidence":{"sourceBytes":1725726,"audioBytes":8295,"seconds":1.9799773242630385,"audible":true},"videoBytes":7629402,"audioBytes":24624,"mime":"audio/webm;codecs=opus","decodedSeconds":6,"rms":0.7021245441005343,"progress":5.95,"cancelledName":"AbortError","brokenRejected":true,"oversizedRejected":true,"contextsCreated":5,"contextsClosed":5,"tracksStopped":5}
+# Subtest: browser audio recovery compresses a large saved video, preserves audio, and releases resources on success/cancel/error
+ok 13 - browser audio recovery compresses a large saved video, preserves audio, and releases resources on success/cancel/error
+  ---
+  duration_ms: 17340.468667
+  type: 'test'
+  ...
+# Subtest: internal test access requires the exact server identity and a valid private grant; lookup errors fail closed
+ok 14 - internal test access requires the exact server identity and a valid private grant; lookup errors fail closed
+  ---
+  duration_ms: 93.681375
+  type: 'test'
+  ...
+# Subtest: approved internal Pro avoids fabricated billing refresh without altering subscriptions; revocation restores ordinary refresh
+ok 15 - approved internal Pro avoids fabricated billing refresh without altering subscriptions; revocation restores ordinary refresh
+  ---
+  duration_ms: 211.337958
+  type: 'test'
+  ...
+# Subtest: access ignores caller-supplied test identity and internal Pro operations retain budget denial
+ok 16 - access ignores caller-supplied test identity and internal Pro operations retain budget denial
+  ---
+  duration_ms: 195.357459
+  type: 'test'
+  ...
+# Subtest: internal test checkout and portal reject billing creation after verified auth, with no Stripe calls
+ok 17 - internal test checkout and portal reject billing creation after verified auth, with no Stripe calls
+  ---
+  duration_ms: 66.711875
+  type: 'test'
+  ...
+# Subtest: VideoFeed is scoped to /interview instead of mounted globally in the root layout
+ok 18 - VideoFeed is scoped to /interview instead of mounted globally in the root layout
+  ---
+  duration_ms: 2.170041
+  type: 'test'
+  ...
+# Subtest: analytics constants include permission retry and skip events
+ok 19 - analytics constants include permission retry and skip events
+  ---
+  duration_ms: 0.288333
+  type: 'test'
+  ...
+# Subtest: VideoFeed records denial diagnostics and retry/skip analytics
+ok 20 - VideoFeed records denial diagnostics and retry/skip analytics
+  ---
+  duration_ms: 0.203208
+  type: 'test'
+  ...
+# Subtest: transcribe: authenticated legacy shape gets actionable upgrade before ownership/quota/provider calls
+ok 21 - transcribe: authenticated legacy shape gets actionable upgrade before ownership/quota/provider calls
+  ---
+  duration_ms: 199.625084
+  type: 'test'
+  ...
+# Subtest: generate-feedback: authenticated legacy shape gets actionable upgrade before ownership/quota/provider calls
+ok 22 - generate-feedback: authenticated legacy shape gets actionable upgrade before ownership/quota/provider calls
+  ---
+  duration_ms: 86.923459
+  type: 'test'
+  ...
+# Subtest: transcription form preserves owned ID, actual MIME/extension and bounded audio; rejects full video, empty and oversized bytes
+ok 23 - transcription form preserves owned ID, actual MIME/extension and bounded audio; rejects full video, empty and oversized bytes
+  ---
+  duration_ms: 2.229541
+  type: 'test'
+  ...
+# Subtest: local recovery metadata retains stable IDs/path and never claims JSON preserves media bytes
+ok 24 - local recovery metadata retains stable IDs/path and never claims JSON preserves media bytes
+  ---
+  duration_ms: 0.205125
+  type: 'test'
+  ...
+# Subtest: changing answer cancels the old video response before it can overwrite the new selection
+ok 25 - changing answer cancels the old video response before it can overwrite the new selection
+  ---
+  duration_ms: 74.242958
+  type: 'test'
+  ...
+# 📤 Uploading video: 11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/33333333-3333-4333-8333-333333333333.webm (0.10MB)
+# 📤 Uploading video: 11111111-1111-4111-8111-111111111111/33333333-3333-4333-8333-333333333333/33333333-3333-4333-8333-333333333333.mp4 (0.10MB)
+# ❌ Invalid file type: text/plain
+# Subtest: changing answer cancels the old feedback response and loading state
+ok 26 - changing answer cancels the old feedback response and loading state
+  ---
+  duration_ms: 46.94125
+  type: 'test'
+  ...
+# Subtest: video upload accepts actual recorder codec MIME and stores matching file type without altering the source bytes
+ok 27 - video upload accepts actual recorder codec MIME and stores matching file type without altering the source bytes
+  ---
+  duration_ms: 7.137833
+  type: 'test'
+  ...
+# Subtest: upload failure retains captured bytes, blocks advance/provider work, and retries the same answer before advancing
+ok 28 - upload failure retains captured bytes, blocks advance/provider work, and retries the same answer before advancing
+  ---
+  duration_ms: 49.402291
+  type: 'test'
+  ...
+# Subtest: transcription retry keeps compressed audio on API failure and discards a late result after selection changes
+ok 29 - transcription retry keeps compressed audio on API failure and discards a late result after selection changes
+  ---
+  duration_ms: 37.143958
+  type: 'test'
+  ...
+# Subtest: permanent save failure allows explicit discard only after confirmation, removes only its unsaved entry and stays on the question
+ok 30 - permanent save failure allows explicit discard only after confirmation, removes only its unsaved entry and stays on the question
+  ---
+  duration_ms: 24.216
+  type: 'test'
+  ...
+# Subtest: download original preserves exact captured bytes and MIME extension, revokes its URL and never discards or advances
+ok 31 - download original preserves exact captured bytes and MIME extension, revokes its URL and never discards or advances
+  ---
+  duration_ms: 35.245375
+  type: 'test'
+  ...
+# 📤 Uploading video: 11111111-1111-4111-8111-111111111111/44444444-4444-4444-8444-444444444444/33333333-3333-4333-8333-333333333333.webm (0.10MB)
+# 📤 Uploading video: 11111111-1111-4111-8111-111111111111/44444444-4444-4444-8444-444444444444/33333333-3333-4333-8333-333333333333.webm (0.10MB)
+# 📤 Uploading video: 11111111-1111-4111-8111-111111111111/44444444-4444-4444-8444-444444444444/33333333-3333-4333-8333-333333333333.webm (0.10MB)
+# 📤 Uploading video: 11111111-1111-4111-8111-111111111111/44444444-4444-4444-8444-444444444444/33333333-3333-4333-8333-333333333333.webm (0.10MB)
+# 📤 Uploading video: 11111111-1111-4111-8111-111111111111/44444444-4444-4444-8444-444444444444/33333333-3333-4333-8333-333333333333.webm (0.10MB)
+# 📤 Uploading video: 11111111-1111-4111-8111-111111111111/44444444-4444-4444-8444-444444444444/33333333-3333-4333-8333-333333333333.webm (0.10MB)
+# 📤 Uploading video: 11111111-1111-4111-8111-111111111111/44444444-4444-4444-8444-444444444444/33333333-3333-4333-8333-333333333333.webm (0.10MB)
+# Subtest: upload_response_lost: actual save service reconciles one immutable object/row before confirming the provider may run
+ok 32 - upload_response_lost: actual save service reconciles one immutable object/row before confirming the provider may run
+  ---
+  duration_ms: 168.737666
+  type: 'test'
+  ...
+# Subtest: upload_and_read_lost: actual save service reconciles one immutable object/row before confirming the provider may run
+ok 33 - upload_and_read_lost: actual save service reconciles one immutable object/row before confirming the provider may run
+  ---
+  duration_ms: 63.815208
+  type: 'test'
+  ...
+# Subtest: insert_failure: actual save service reconciles one immutable object/row before confirming the provider may run
+ok 34 - insert_failure: actual save service reconciles one immutable object/row before confirming the provider may run
+  ---
+  duration_ms: 54.844084
+  type: 'test'
+  ...
+# Subtest: insert_response_lost: actual save service reconciles one immutable object/row before confirming the provider may run
+ok 35 - insert_response_lost: actual save service reconciles one immutable object/row before confirming the provider may run
+  ---
+  duration_ms: 30.370375
+  type: 'test'
+  ...
+# Subtest: insert_and_read_lost: actual save service reconciles one immutable object/row before confirming the provider may run
+ok 36 - insert_and_read_lost: actual save service reconciles one immutable object/row before confirming the provider may run
+  ---
+  duration_ms: 21.563125
+  type: 'test'
+  ...
+# Subtest: capture conflict, wrong session ownership and altered existing media fail closed without overwrites
+ok 37 - capture conflict, wrong session ownership and altered existing media fail closed without overwrites
+  ---
+  duration_ms: 173.336458
+  type: 'test'
+  ...
+# Subtest: SQL: approved exact-user internal Pro preserves history, budgets and ownership without canonical billing writes
+ok 38 - SQL: approved exact-user internal Pro preserves history, budgets and ownership without canonical billing writes # SKIP
+  ---
+  duration_ms: 0.544291
+  type: 'test'
+  ...
+# Subtest: SQL: internal Pro revocation, expiry and missing grant restore ordinary allowance without erasing usage
+ok 39 - SQL: internal Pro revocation, expiry and missing grant restore ordinary allowance without erasing usage # SKIP
+  ---
+  duration_ms: 0.060709
+  type: 'test'
+  ...
+# Subtest: SQL: internal grant is pinned to one user and denied to all client roles, including the owner
+ok 40 - SQL: internal grant is pinned to one user and denied to all client roles, including the owner # SKIP
+  ---
+  duration_ms: 0.039584
+  type: 'test'
+  ...
+# Subtest: SQL: hosted session-type constraint admits every current practice type and preserves historical sales pitches
+ok 41 - SQL: hosted session-type constraint admits every current practice type and preserves historical sales pitches # SKIP
+  ---
+  duration_ms: 0.101375
+  type: 'test'
+  ...
+# Subtest: SQL: legacy completion backfill uses completion time with creation fallback and preserves completed usage
+ok 42 - SQL: legacy completion backfill uses completion time with creation fallback and preserves completed usage # SKIP
+  ---
+  duration_ms: 0.039
+  type: 'test'
+  ...
+# Subtest: SQL: hosted unique recording index is preserved without a redundant second index
+ok 43 - SQL: hosted unique recording index is preserved without a redundant second index # SKIP
+  ---
+  duration_ms: 0.032916
+  type: 'test'
+  ...
+# Subtest: SQL: duplicate webhook ledger and distinct events for same purchase yield one canonical outbox row
+ok 44 - SQL: duplicate webhook ledger and distinct events for same purchase yield one canonical outbox row # SKIP
+  ---
+  duration_ms: 0.082292
+  type: 'test'
+  ...
+# Subtest: SQL: binding is immutable in RPC and direct update; customer cannot bind to a second user
+ok 45 - SQL: binding is immutable in RPC and direct update; customer cannot bind to a second user # SKIP
+  ---
+  duration_ms: 0.172917
+  type: 'test'
+  ...
+# Subtest: SQL: old subscription cancellation cannot cancel the newer subscription for same user
+ok 46 - SQL: old subscription cancellation cannot cancel the newer subscription for same user # SKIP
+  ---
+  duration_ms: 0.215625
+  type: 'test'
+  ...
+# Subtest: SQL: concurrent stale revisions permit one update; losing event is not acknowledged
+ok 47 - SQL: concurrent stale revisions permit one update; losing event is not acknowledged # SKIP
+  ---
+  duration_ms: 0.140666
+  type: 'test'
+  ...
+# Subtest: SQL: anonymous/authenticated cannot invoke privileged RPCs or write subscription/session bindings
+ok 48 - SQL: anonymous/authenticated cannot invoke privileged RPCs or write subscription/session bindings # SKIP
+  ---
+  duration_ms: 0.030333
+  type: 'test'
+  ...
+# Subtest: SQL: free allowance reserves only three concurrent sessions and retries reuse the original session
+ok 49 - SQL: free allowance reserves only three concurrent sessions and retries reuse the original session # SKIP
+  ---
+  duration_ms: 0.080167
+  type: 'test'
+  ...
+# Subtest: SQL: deleting completed history cannot reset lifetime allowance; repeated completion counts once
+ok 50 - SQL: deleting completed history cannot reset lifetime allowance; repeated completion counts once # SKIP
+  ---
+  duration_ms: 0.032833
+  type: 'test'
+  ...
+# Subtest: SQL: exhausted legacy NULL-expiry denies AI work; recent transition and valid admitted work remain usable
+ok 51 - SQL: exhausted legacy NULL-expiry denies AI work; recent transition and valid admitted work remain usable # SKIP
+  ---
+  duration_ms: 0.0255
+  type: 'test'
+  ...
+# Subtest: SQL: durable budgets and leases serialize across concurrent connections
+ok 52 - SQL: durable budgets and leases serialize across concurrent connections # SKIP
+  ---
+  duration_ms: 0.024584
+  type: 'test'
+  ...
+# Subtest: SQL: completion cannot interleave between used and active counts to admit a fourth free session
+ok 53 - SQL: completion cannot interleave between used and active counts to admit a fourth free session # SKIP
+  ---
+  duration_ms: 0.025042
+  type: 'test'
+  ...
+# [posthog-server] Durable event remains pending
+# [billing] Purchase analytics remains pending
+# [server] Operation failed unknown
+# [server] Operation failed unknown
+# Subtest: paid checkout binds caller, subscription metadata and customer; rejects stolen/incomplete checkout
+ok 54 - paid checkout binds caller, subscription metadata and customer; rejects stolen/incomplete checkout
+  ---
+  duration_ms: 2.511584
+  type: 'test'
+  ...
+# Subtest: only approved configured prices, valid periods and actual Stripe status are persisted
+ok 55 - only approved configured prices, valid periods and actual Stripe status are persisted
+  ---
+  duration_ms: 0.186667
+  type: 'test'
+  ...
+# Subtest: grace is bounded; canceled, expired trials and unverified/stale rows never get unlimited access
+ok 56 - grace is bounded; canceled, expired trials and unverified/stale rows never get unlimited access
+  ---
+  duration_ms: 0.165708
+  type: 'test'
+  ...
+# Subtest: invoice subscription IDs support endpoint-version parent and legacy shapes
+ok 57 - invoice subscription IDs support endpoint-version parent and legacy shapes
+  ---
+  duration_ms: 0.064625
+  type: 'test'
+  ...
+# Subtest: verification refuses existing owner conflict before any write
+ok 58 - verification refuses existing owner conflict before any write
+  ---
+  duration_ms: 259.809834
+  type: 'test'
+  ...
+# Subtest: billing revision conflicts re-fetch current Stripe state; failed/empty persistence never succeeds
+ok 59 - billing revision conflicts re-fetch current Stripe state; failed/empty persistence never succeeds
+  ---
+  duration_ms: 86.601708
+  type: 'test'
+  ...
+# Subtest: unauthenticated/unowned/oversized transcription never reaches paid provider
+ok 60 - unauthenticated/unowned/oversized transcription never reaches paid provider
+  ---
+  duration_ms: 169.714333
+  type: 'test'
+  ...
+# Subtest: paid caller shape with recordingId and codec MIME transcribes and persists, regardless of spoofed header
+ok 61 - paid caller shape with recordingId and codec MIME transcribes and persists, regardless of spoofed header
+  ---
+  duration_ms: 36.368875
+  type: 'test'
+  ...
+# Subtest: durable budget denial fails closed before transcription
+ok 62 - durable budget denial fails closed before transcription
+  ---
+  duration_ms: 28.471459
+  type: 'test'
+  ...
+# Subtest: valid paid legacy feedback fields remain accepted; owned stored context wins and zero scores persist
+ok 63 - valid paid legacy feedback fields remain accepted; owned stored context wins and zero scores persist
+  ---
+  duration_ms: 38.512084
+  type: 'test'
+  ...
+# Subtest: feedback requires recording ownership; malformed output is not persisted
+ok 64 - feedback requires recording ownership; malformed output is not persisted
+  ---
+  duration_ms: 48.420167
+  type: 'test'
+  ...
+# Subtest: existing saved feedback is readable without a new paid generation
+ok 65 - existing saved feedback is readable without a new paid generation
+  ---
+  duration_ms: 26.358959
+  type: 'test'
+  ...
+# Subtest: question generation requires authentication and server allowance before provider invocation
+ok 66 - question generation requires authentication and server allowance before provider invocation
+  ---
+  duration_ms: 13.667167
+  type: 'test'
+  ...
+# Subtest: webhook signature/unpaid guards prevent persistence; invoice events reconcile instead of forcing active
+ok 67 - webhook signature/unpaid guards prevent persistence; invoice events reconcile instead of forcing active
+  ---
+  duration_ms: 16.27425
+  type: 'test'
+  ...
+# Subtest: final/partial session completion accepts Bearer and existing beacon shapes and verifies ownership
+ok 68 - final/partial session completion accepts Bearer and existing beacon shapes and verifies ownership
+  ---
+  duration_ms: 50.176417
+  type: 'test'
+  ...
+# Subtest: feedback and transcription recheck saved results after delayed reservation; provider is not double-called
+ok 69 - feedback and transcription recheck saved results after delayed reservation; provider is not double-called
+  ---
+  duration_ms: 45.658875
+  type: 'test'
+  ...
+# Subtest: durable analytics await ingestion acknowledgement, preserve stable identity and fail safely
+ok 70 - durable analytics await ingestion acknowledgement, preserve stable identity and fail safely
+  ---
+  duration_ms: 54.148
+  type: 'test'
+  ...
+# Subtest: outbox delivery forwards original creation time and acknowledges only a successful send
+ok 71 - outbox delivery forwards original creation time and acknowledges only a successful send
+  ---
+  duration_ms: 13.913958
+  type: 'test'
+  ...
+# Subtest: outbox retry after lost database acknowledgement sends the identical durable payload
+ok 72 - outbox retry after lost database acknowledgement sends the identical durable payload
+  ---
+  duration_ms: 13.050625
+  type: 'test'
+  ...
+# Subtest: analytics delivery failure keeps outbox pending and cannot fail verified paid access
+ok 73 - analytics delivery failure keeps outbox pending and cannot fail verified paid access
+  ---
+  duration_ms: 9.274125
+  type: 'test'
+  ...
+# Subtest: checkout creates only an approved price for the authenticated owner and blocks existing subscriptions
+ok 74 - checkout creates only an approved price for the authenticated owner and blocks existing subscriptions
+  ---
+  duration_ms: 16.139042
+  type: 'test'
+  ...
+# Subtest: protected analytics cron rejects missing/wrong credentials and drains pending identities
+ok 75 - protected analytics cron rejects missing/wrong credentials and drains pending identities
+  ---
+  duration_ms: 2.921875
+  type: 'test'
+  ...
+# Subtest: completion fails on recording-count errors and missing update rows instead of reporting success
+ok 76 - completion fails on recording-count errors and missing update rows instead of reporting success
+  ---
+  duration_ms: 16.604334
+  type: 'test'
+  ...
+# Subtest: actual final-question and skip completion branches do not navigate after failure and permit successful retry
+ok 77 - actual final-question and skip completion branches do not navigate after failure and permit successful retry
+  ---
+  duration_ms: 19.552291
+  type: 'test'
+  ...
+# [server] Operation failed unknown
+# [server] Operation failed unknown
+# [server] Operation failed unknown
+# Subtest: signup notification rejects missing/invalid/anonymous authentication before budget or provider
+ok 78 - signup notification rejects missing/invalid/anonymous authentication before budget or provider
+  ---
+  duration_ms: 274.692917
+  type: 'test'
+  ...
+# Subtest: signup recipient, user ID, method and time come from verified Auth; HTML is escaped
+ok 79 - signup recipient, user ID, method and time come from verified Auth; HTML is escaped
+  ---
+  duration_ms: 38.173708
+  type: 'test'
+  ...
+# Subtest: unconfirmed, invalid, future and old Auth identities cannot request signup emails
+ok 80 - unconfirmed, invalid, future and old Auth identities cannot request signup emails
+  ---
+  duration_ms: 107.176625
+  type: 'test'
+  ...
+# Subtest: signup input is bounded and malformed JSON never consumes budget
+ok 81 - signup input is bounded and malformed JSON never consumes budget
+  ---
+  duration_ms: 12.933208
+  type: 'test'
+  ...
+# Subtest: signup budget errors and malformed responses fail closed
+ok 82 - signup budget errors and malformed responses fail closed
+  ---
+  duration_ms: 61.227209
+  type: 'test'
+  ...
+# Subtest: concurrent signup requests across route instances use the shared durable budget
+ok 83 - concurrent signup requests across route instances use the shared durable budget
+  ---
+  duration_ms: 37.462416
+  type: 'test'
+  ...
+# [server] Operation failed unknown
+# Subtest: uncertain provider response retries identical keys/payloads without duplicate delivery
+ok 84 - uncertain provider response retries identical keys/payloads without duplicate delivery
+  ---
+  duration_ms: 264.671375
+  type: 'test'
+  ...
+# Subtest: signup payloads stay deterministic across a budget bucket rollover and changing request headers
+ok 85 - signup payloads stay deterministic across a budget bucket rollover and changing request headers
+  ---
+  duration_ms: 12.186917
+  type: 'test'
+  ...
+# Subtest: provider attempts cannot run past the signup/idempotency deadline after a delayed budget lookup
+ok 86 - provider attempts cannot run past the signup/idempotency deadline after a delayed budget lookup
+  ---
+  duration_ms: 19.765
+  type: 'test'
+  ...
+# [server] Operation failed unknown
+# [server] Operation failed unknown
+# [server] Operation failed unknown
+# [waitlist] Welcome email unavailable
+# [auth] Signup notification unavailable
+# Subtest: provider failure has bounded retries and never exposes provider credentials or bodies
+ok 87 - provider failure has bounded retries and never exposes provider credentials or bodies
+  ---
+  duration_ms: 774.108542
+  type: 'test'
+  ...
+# Subtest: concurrent normalized waitlist duplicates return the same success and send only once
+ok 88 - concurrent normalized waitlist duplicates return the same success and send only once
+  ---
+  duration_ms: 141.960709
+  type: 'test'
+  ...
+# Subtest: waitlist validates size/email and fails closed on database error before sending
+ok 89 - waitlist validates size/email and fails closed on database error before sending
+  ---
+  duration_ms: 22.371042
+  type: 'test'
+  ...
+# Subtest: waitlist transport failure preserves enrollment and a replay cannot resend
+ok 90 - waitlist transport failure preserves enrollment and a replay cannot resend
+  ---
+  duration_ms: 10.779
+  type: 'test'
+  ...
+# Subtest: new confirmed client sessions forward only the Bearer token and never block sign-in
+ok 91 - new confirmed client sessions forward only the Bearer token and never block sign-in
+  ---
+  duration_ms: 3.197791
+  type: 'test'
+  ...
+1..91
+# tests 91
+# suites 0
+# pass 63
+# fail 0
+# cancelled 0
+# skipped 28
+# todo 0
+# duration_ms 18630.614834

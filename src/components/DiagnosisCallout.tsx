@@ -20,14 +20,17 @@
  */
 
 import { Target, ArrowRight } from 'lucide-react';
-import type { Diagnosis } from '@/utils/diagnosisTaxonomy';
+import { validDiagnosis } from '@/utils/feedbackValidation';
 
 interface DiagnosisCalloutProps {
-    diagnosis?: Diagnosis;
+    diagnosis?: unknown;
+    transcript: string;
+    duration?: number;
     onPracticeClick?: () => void;
 }
 
-export default function DiagnosisCallout({ diagnosis, onPracticeClick }: DiagnosisCalloutProps) {
+export default function DiagnosisCallout({ diagnosis: candidate, transcript, duration, onPracticeClick }: DiagnosisCalloutProps) {
+    const diagnosis = validDiagnosis(candidate, transcript, duration);
     if (!diagnosis) return null;
 
     return (

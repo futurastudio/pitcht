@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: SQL: approved exact-user internal Pro preserves history, budgets and ownership without canonical billing writes
+ok 1 - SQL: approved exact-user internal Pro preserves history, budgets and ownership without canonical billing writes
+  ---
+  duration_ms: 209.11725
+  type: 'test'
+  ...
+# Subtest: SQL: internal Pro revocation, expiry and missing grant restore ordinary allowance without erasing usage
+ok 2 - SQL: internal Pro revocation, expiry and missing grant restore ordinary allowance without erasing usage
+  ---
+  duration_ms: 81.199167
+  type: 'test'
+  ...
+# Subtest: SQL: internal grant is pinned to one user and denied to all client roles, including the owner
+ok 3 - SQL: internal grant is pinned to one user and denied to all client roles, including the owner
+  ---
+  duration_ms: 56.761666
+  type: 'test'
+  ...
+# Subtest: SQL: hosted session-type constraint admits every current practice type and preserves historical sales pitches
+ok 4 - SQL: hosted session-type constraint admits every current practice type and preserves historical sales pitches
+  ---
+  duration_ms: 63.563917
+  type: 'test'
+  ...
+# Subtest: SQL: legacy completion backfill uses completion time with creation fallback and preserves completed usage
+ok 5 - SQL: legacy completion backfill uses completion time with creation fallback and preserves completed usage
+  ---
+  duration_ms: 9.731042
+  type: 'test'
+  ...
+# Subtest: SQL: hosted unique recording index is preserved without a redundant second index
+ok 6 - SQL: hosted unique recording index is preserved without a redundant second index
+  ---
+  duration_ms: 15.582458
+  type: 'test'
+  ...
+# Subtest: SQL: duplicate webhook ledger and distinct events for same purchase yield one canonical outbox row
+ok 7 - SQL: duplicate webhook ledger and distinct events for same purchase yield one canonical outbox row
+  ---
+  duration_ms: 35.4965
+  type: 'test'
+  ...
+# Subtest: SQL: binding is immutable in RPC and direct update; customer cannot bind to a second user
+ok 8 - SQL: binding is immutable in RPC and direct update; customer cannot bind to a second user
+  ---
+  duration_ms: 38.253292
+  type: 'test'
+  ...
+# Subtest: SQL: old subscription cancellation cannot cancel the newer subscription for same user
+ok 9 - SQL: old subscription cancellation cannot cancel the newer subscription for same user
+  ---
+  duration_ms: 36.52
+  type: 'test'
+  ...
+# Subtest: SQL: concurrent stale revisions permit one update; losing event is not acknowledged
+ok 10 - SQL: concurrent stale revisions permit one update; losing event is not acknowledged
+  ---
+  duration_ms: 28.879167
+  type: 'test'
+  ...
+# Subtest: SQL: anonymous/authenticated cannot invoke privileged RPCs or write subscription/session bindings
+ok 11 - SQL: anonymous/authenticated cannot invoke privileged RPCs or write subscription/session bindings
+  ---
+  duration_ms: 48.395042
+  type: 'test'
+  ...
+# Subtest: SQL: free allowance reserves only three concurrent sessions and retries reuse the original session
+ok 12 - SQL: free allowance reserves only three concurrent sessions and retries reuse the original session
+  ---
+  duration_ms: 46.383791
+  type: 'test'
+  ...
+# Subtest: SQL: deleting completed history cannot reset lifetime allowance; repeated completion counts once
+ok 13 - SQL: deleting completed history cannot reset lifetime allowance; repeated completion counts once
+  ---
+  duration_ms: 75.971125
+  type: 'test'
+  ...
+# Subtest: SQL: exhausted legacy NULL-expiry denies AI work; recent transition and valid admitted work remain usable
+ok 14 - SQL: exhausted legacy NULL-expiry denies AI work; recent transition and valid admitted work remain usable
+  ---
+  duration_ms: 130.95475
+  type: 'test'
+  ...
+# Subtest: SQL: durable budgets and leases serialize across concurrent connections
+ok 15 - SQL: durable budgets and leases serialize across concurrent connections
+  ---
+  duration_ms: 117.86625
+  type: 'test'
+  ...
+# Subtest: SQL: completion cannot interleave between used and active counts to admit a fourth free session
+ok 16 - SQL: completion cannot interleave between used and active counts to admit a fourth free session
+  ---
+  duration_ms: 79.594583
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1467.679125

@@ -1,0 +1,283 @@
+TAP version 13
+# Subtest: internal test access requires the exact server identity and a valid private grant; lookup errors fail closed
+ok 1 - internal test access requires the exact server identity and a valid private grant; lookup errors fail closed
+  ---
+  duration_ms: 40.919625
+  type: 'test'
+  ...
+# Subtest: approved internal Pro avoids fabricated billing refresh without altering subscriptions; revocation restores ordinary refresh
+ok 2 - approved internal Pro avoids fabricated billing refresh without altering subscriptions; revocation restores ordinary refresh
+  ---
+  duration_ms: 182.696583
+  type: 'test'
+  ...
+# Subtest: access ignores caller-supplied test identity and internal Pro operations retain budget denial
+ok 3 - access ignores caller-supplied test identity and internal Pro operations retain budget denial
+  ---
+  duration_ms: 157.413333
+  type: 'test'
+  ...
+# Subtest: internal test checkout and portal reject billing creation after verified auth, with no Stripe calls
+ok 4 - internal test checkout and portal reject billing creation after verified auth, with no Stripe calls
+  ---
+  duration_ms: 47.445708
+  type: 'test'
+  ...
+# Subtest: VideoFeed is scoped to /interview instead of mounted globally in the root layout
+ok 5 - VideoFeed is scoped to /interview instead of mounted globally in the root layout
+  ---
+  duration_ms: 2.185208
+  type: 'test'
+  ...
+# Subtest: analytics constants include permission retry and skip events
+ok 6 - analytics constants include permission retry and skip events
+  ---
+  duration_ms: 0.499917
+  type: 'test'
+  ...
+# Subtest: VideoFeed records denial diagnostics and retry/skip analytics
+ok 7 - VideoFeed records denial diagnostics and retry/skip analytics
+  ---
+  duration_ms: 0.64625
+  type: 'test'
+  ...
+# Subtest: SQL: approved exact-user internal Pro preserves history, budgets and ownership without canonical billing writes
+ok 8 - SQL: approved exact-user internal Pro preserves history, budgets and ownership without canonical billing writes
+  ---
+  duration_ms: 253.977375
+  type: 'test'
+  ...
+# Subtest: SQL: internal Pro revocation, expiry and missing grant restore ordinary allowance without erasing usage
+ok 9 - SQL: internal Pro revocation, expiry and missing grant restore ordinary allowance without erasing usage
+  ---
+  duration_ms: 135.318584
+  type: 'test'
+  ...
+# Subtest: SQL: internal grant is pinned to one user and denied to all client roles, including the owner
+ok 10 - SQL: internal grant is pinned to one user and denied to all client roles, including the owner
+  ---
+  duration_ms: 72.143333
+  type: 'test'
+  ...
+# Subtest: SQL: hosted session-type constraint admits every current practice type and preserves historical sales pitches
+ok 11 - SQL: hosted session-type constraint admits every current practice type and preserves historical sales pitches
+  ---
+  duration_ms: 57.508583
+  type: 'test'
+  ...
+# Subtest: SQL: legacy completion backfill uses completion time with creation fallback and preserves completed usage
+ok 12 - SQL: legacy completion backfill uses completion time with creation fallback and preserves completed usage
+  ---
+  duration_ms: 15.562333
+  type: 'test'
+  ...
+# Subtest: SQL: hosted unique recording index is preserved without a redundant second index
+ok 13 - SQL: hosted unique recording index is preserved without a redundant second index
+  ---
+  duration_ms: 20.223708
+  type: 'test'
+  ...
+# Subtest: SQL: duplicate webhook ledger and distinct events for same purchase yield one canonical outbox row
+ok 14 - SQL: duplicate webhook ledger and distinct events for same purchase yield one canonical outbox row
+  ---
+  duration_ms: 39.22825
+  type: 'test'
+  ...
+# Subtest: SQL: binding is immutable in RPC and direct update; customer cannot bind to a second user
+ok 15 - SQL: binding is immutable in RPC and direct update; customer cannot bind to a second user
+  ---
+  duration_ms: 35.333958
+  type: 'test'
+  ...
+# Subtest: SQL: old subscription cancellation cannot cancel the newer subscription for same user
+ok 16 - SQL: old subscription cancellation cannot cancel the newer subscription for same user
+  ---
+  duration_ms: 35.73925
+  type: 'test'
+  ...
+# Subtest: SQL: concurrent stale revisions permit one update; losing event is not acknowledged
+ok 17 - SQL: concurrent stale revisions permit one update; losing event is not acknowledged
+  ---
+  duration_ms: 27.906292
+  type: 'test'
+  ...
+# Subtest: SQL: anonymous/authenticated cannot invoke privileged RPCs or write subscription/session bindings
+ok 18 - SQL: anonymous/authenticated cannot invoke privileged RPCs or write subscription/session bindings
+  ---
+  duration_ms: 53.906333
+  type: 'test'
+  ...
+# Subtest: SQL: free allowance reserves only three concurrent sessions and retries reuse the original session
+ok 19 - SQL: free allowance reserves only three concurrent sessions and retries reuse the original session
+  ---
+  duration_ms: 42.056792
+  type: 'test'
+  ...
+# Subtest: SQL: deleting completed history cannot reset lifetime allowance; repeated completion counts once
+ok 20 - SQL: deleting completed history cannot reset lifetime allowance; repeated completion counts once
+  ---
+  duration_ms: 56.267041
+  type: 'test'
+  ...
+# Subtest: SQL: exhausted legacy NULL-expiry denies AI work; recent transition and valid admitted work remain usable
+ok 21 - SQL: exhausted legacy NULL-expiry denies AI work; recent transition and valid admitted work remain usable
+  ---
+  duration_ms: 97.579042
+  type: 'test'
+  ...
+# Subtest: SQL: durable budgets and leases serialize across concurrent connections
+ok 22 - SQL: durable budgets and leases serialize across concurrent connections
+  ---
+  duration_ms: 78.938583
+  type: 'test'
+  ...
+# Subtest: SQL: completion cannot interleave between used and active counts to admit a fourth free session
+ok 23 - SQL: completion cannot interleave between used and active counts to admit a fourth free session
+  ---
+  duration_ms: 62.642458
+  type: 'test'
+  ...
+# [posthog-server] Durable event remains pending
+# [server] Operation failed unknown
+# [server] Operation failed unknown
+# Subtest: paid checkout binds caller, subscription metadata and customer; rejects stolen/incomplete checkout
+ok 24 - paid checkout binds caller, subscription metadata and customer; rejects stolen/incomplete checkout
+  ---
+  duration_ms: 1.914209
+  type: 'test'
+  ...
+# Subtest: only approved configured prices, valid periods and actual Stripe status are persisted
+ok 25 - only approved configured prices, valid periods and actual Stripe status are persisted
+  ---
+  duration_ms: 0.176542
+  type: 'test'
+  ...
+# Subtest: grace is bounded; canceled, expired trials and unverified/stale rows never get unlimited access
+ok 26 - grace is bounded; canceled, expired trials and unverified/stale rows never get unlimited access
+  ---
+  duration_ms: 0.164792
+  type: 'test'
+  ...
+# Subtest: invoice subscription IDs support endpoint-version parent and legacy shapes
+ok 27 - invoice subscription IDs support endpoint-version parent and legacy shapes
+  ---
+  duration_ms: 0.0655
+  type: 'test'
+  ...
+# Subtest: verification refuses existing owner conflict before any write
+ok 28 - verification refuses existing owner conflict before any write
+  ---
+  duration_ms: 213.444042
+  type: 'test'
+  ...
+# Subtest: billing revision conflicts re-fetch current Stripe state; failed/empty persistence never succeeds
+ok 29 - billing revision conflicts re-fetch current Stripe state; failed/empty persistence never succeeds
+  ---
+  duration_ms: 32.624292
+  type: 'test'
+  ...
+# Subtest: unauthenticated/unowned/oversized transcription never reaches paid provider
+ok 30 - unauthenticated/unowned/oversized transcription never reaches paid provider
+  ---
+  duration_ms: 118.376084
+  type: 'test'
+  ...
+# Subtest: paid caller shape with recordingId and codec MIME transcribes and persists, regardless of spoofed header
+ok 31 - paid caller shape with recordingId and codec MIME transcribes and persists, regardless of spoofed header
+  ---
+  duration_ms: 27.743542
+  type: 'test'
+  ...
+# Subtest: durable budget denial fails closed before transcription
+ok 32 - durable budget denial fails closed before transcription
+  ---
+  duration_ms: 19.2555
+  type: 'test'
+  ...
+# Subtest: valid paid legacy feedback fields remain accepted; owned stored context wins and zero scores persist
+ok 33 - valid paid legacy feedback fields remain accepted; owned stored context wins and zero scores persist
+  ---
+  duration_ms: 29.396917
+  type: 'test'
+  ...
+# Subtest: feedback requires recording ownership; malformed output is not persisted
+ok 34 - feedback requires recording ownership; malformed output is not persisted
+  ---
+  duration_ms: 17.9785
+  type: 'test'
+  ...
+# Subtest: existing saved feedback is readable without a new paid generation
+ok 35 - existing saved feedback is readable without a new paid generation
+  ---
+  duration_ms: 14.759208
+  type: 'test'
+  ...
+# Subtest: question generation requires authentication and server allowance before provider invocation
+ok 36 - question generation requires authentication and server allowance before provider invocation
+  ---
+  duration_ms: 11.389458
+  type: 'test'
+  ...
+# Subtest: webhook signature/unpaid guards prevent persistence; invoice events reconcile instead of forcing active
+ok 37 - webhook signature/unpaid guards prevent persistence; invoice events reconcile instead of forcing active
+  ---
+  duration_ms: 10.277917
+  type: 'test'
+  ...
+# Subtest: final/partial session completion accepts Bearer and existing beacon shapes and verifies ownership
+ok 38 - final/partial session completion accepts Bearer and existing beacon shapes and verifies ownership
+  ---
+  duration_ms: 21.944208
+  type: 'test'
+  ...
+# Subtest: feedback and transcription recheck saved results after delayed reservation; provider is not double-called
+ok 39 - feedback and transcription recheck saved results after delayed reservation; provider is not double-called
+  ---
+  duration_ms: 31.519583
+  type: 'test'
+  ...
+# Subtest: durable analytics await ingestion acknowledgement, preserve stable identity and fail safely
+ok 40 - durable analytics await ingestion acknowledgement, preserve stable identity and fail safely
+  ---
+  duration_ms: 64.573834
+  type: 'test'
+  ...
+# Subtest: analytics delivery failure keeps outbox pending and cannot fail verified paid access
+ok 41 - analytics delivery failure keeps outbox pending and cannot fail verified paid access
+  ---
+  duration_ms: 9.278458
+  type: 'test'
+  ...
+# Subtest: checkout creates only an approved price for the authenticated owner and blocks existing subscriptions
+ok 42 - checkout creates only an approved price for the authenticated owner and blocks existing subscriptions
+  ---
+  duration_ms: 11.740208
+  type: 'test'
+  ...
+# Subtest: protected analytics cron rejects missing/wrong credentials and drains pending identities
+ok 43 - protected analytics cron rejects missing/wrong credentials and drains pending identities
+  ---
+  duration_ms: 2.9625
+  type: 'test'
+  ...
+# Subtest: completion fails on recording-count errors and missing update rows instead of reporting success
+ok 44 - completion fails on recording-count errors and missing update rows instead of reporting success
+  ---
+  duration_ms: 10.025292
+  type: 'test'
+  ...
+# Subtest: actual final-question and skip completion branches do not navigate after failure and permit successful retry
+ok 45 - actual final-question and skip completion branches do not navigate after failure and permit successful retry
+  ---
+  duration_ms: 16.4825
+  type: 'test'
+  ...
+1..45
+# tests 45
+# suites 0
+# pass 45
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1533.057209
